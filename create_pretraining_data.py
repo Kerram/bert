@@ -230,8 +230,8 @@ def create_instances_from_document(
   """Creates `TrainingInstance`s for a single document."""
   document = all_documents[document_index]
 
-  # Account for [CLS]
-  max_num_tokens = max_seq_length - 1
+  # Account for [CLS] and [SEP]
+  max_num_tokens = max_seq_length - 2
 
   instances = []
 
@@ -242,7 +242,7 @@ def create_instances_from_document(
     for subtree in subtrees:
       if 5 * len(subtree) < max_num_tokens:
         continue
-      tokens = ["[CLS]"] + subtree
+      tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
 
       (tokens, masked_lm_positions, 
@@ -333,7 +333,8 @@ def main(_):
 
   input_files = []
   for input_pattern in FLAGS.input_file.split(","):
-    input_files.extend(tf.gfile.Glob(input_pattern))
+    if input_pattern:
+      input_files.extend(tf.gfile.Glob(input_pattern))
 
   tf.logging.info("*** Reading from input files ***")
   for input_file in input_files:
@@ -345,12 +346,15 @@ def main(_):
       FLAGS.masked_lm_prob, FLAGS.max_predictions_per_seq, rng)
 
   output_files = FLAGS.output_file.split(",")
+  output_files = [file for file in output_files if file]
+
   tf.logging.info("*** Writing to output files ***")
   for output_file in output_files:
     tf.logging.info("  %s", output_file)
 
   write_instance_to_example_files(instances, tokenizer, FLAGS.max_seq_length,
                                   FLAGS.max_predictions_per_seq, output_files)
+
 
 if __name__ == "__main__":
   flags.mark_flag_as_required("input_file")
