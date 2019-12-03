@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import modeling
-import optimization
+from bert import modeling
+from bert import optimization
 import tensorflow as tf
 
 flags = tf.flags
@@ -47,7 +47,7 @@ flags.DEFINE_string(
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
 flags.DEFINE_integer(
-    "max_seq_length", 128,
+    "max_seq_length", 256,
     "The maximum total input sequence length after WordPiece tokenization. "
     "Sequences longer than this will be truncated, and sequences shorter "
     "than this will be padded. Must match data generation.")
