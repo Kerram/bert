@@ -19,7 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.keras.utils import Progbar
-from tree_parser import is_parsable, split_into_subtrees
+from tree_parser import is_parsable, split_into_subtrees,
+      get_small_subtrees, find_subtree 
 
 import collections
 import random
@@ -53,6 +54,7 @@ flags.DEFINE_integer(
 
 flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
 
+flags.DEFINE_float("gsg_prob", 0.1, "Maximal ratio of tokens in covered subtrees")
 
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
@@ -268,20 +270,46 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
+  masked_lms = []
+  masked_subs = []
+  output_tokens = list(tokens)
+  gsg_to_cover = round(len(tokens) - 2) * gsg_prob
+
+  min_subtree_size = int(gsg_to_cover * 1 / 5)
+  max_subtree_size = int(gsg_to_cover)
+
+  subs = get_small_subtrees(tokens[1:-1], min_subtree_size, max_subtree_size)
+  rng.shuffle(subs)
+
+  cover_len = 0
+  for subtree in subs:
+    if (cover_len + len(subtree) > int(gsg_to_cover)):
+      break
+
+    cover_len += len(subtree)
+    masked_subs.append(subtree)
+
+  for subtree in masked_subs:
+    beg = find_subtree(tokens, subtree)
+
+    for pos in range(len(subtree)):
+      idx = beg + pos
+      output_tokens[idx] = "[MASK2]"
+      masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
+
   cand_indexes = []
   for (i, token) in enumerate(tokens):
-    if token == "[CLS]" or token == "[SEP]":
+    # może by stąd wyrzucić też nawiasy? (bo zgadywanie ich to żadna sztuka)
+    if token == "[CLS]" or token == "[SEP]" or token == "[MASK2]":
       continue
     cand_indexes.append([i])
 
   rng.shuffle(cand_indexes)
 
-  output_tokens = list(tokens)
-
   num_to_predict = min(max_predictions_per_seq,
                        max(1, int(round(len(tokens) * masked_lm_prob))))
+                          + int(round(len(tokens) * gsg_prob))
 
-  masked_lms = []
   covered_indexes = set()
   for index_set in cand_indexes:
     if len(masked_lms) >= num_to_predict:
