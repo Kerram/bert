@@ -300,7 +300,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
   cand_indexes = []
   for (i, token) in enumerate(tokens):
     # może by stąd wyrzucić też nawiasy? (bo zgadywanie ich to żadna sztuka)
-    if token == "[CLS]" or token == "[SEP]" or token == "[MASK2]":
+    if token == "[CLS]" or token == "[SEP]" or token == "[MASK2]" or token == "(" or token == ")":
       continue
     cand_indexes.append([i])
 
