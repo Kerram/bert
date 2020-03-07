@@ -19,8 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.keras.utils import Progbar
-from tree_parser import is_parsable, split_into_subtrees,
-      get_small_subtrees, find_subtree 
+from tree_parser import is_parsable, split_into_subtrees, get_small_subtrees, find_subtree 
 
 import collections
 import random
@@ -53,8 +52,6 @@ flags.DEFINE_integer(
     "Number of times to duplicate the input data (with different masks).")
 
 flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
-
-flags.DEFINE_float("gsg_prob", 0.1, "Maximal ratio of tokens in covered subtrees")
 
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
@@ -238,7 +235,8 @@ def create_instances_from_document(
   instances = []
 
   for sentence in document:
-    assert is_parsable(sentence)
+    if (not is_parsable(sentence)):
+      continue
     subtrees = split_into_subtrees(sentence, max_num_tokens)
 
     for subtree in subtrees:
@@ -246,6 +244,7 @@ def create_instances_from_document(
         continue
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
+
 
       (tokens, masked_lm_positions, 
         masked_lm_labels) = create_masked_lm_predictions(
@@ -270,6 +269,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
+  gsg_prob = 0.1
   masked_lms = []
   masked_subs = []
   output_tokens = list(tokens)
@@ -307,8 +307,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
   rng.shuffle(cand_indexes)
 
   num_to_predict = min(max_predictions_per_seq,
-                       max(1, int(round(len(tokens) * masked_lm_prob))))
-                          + int(round(len(tokens) * gsg_prob))
+                       max(1, int(round(len(tokens) * masked_lm_prob)))) + int(round(len(tokens) * gsg_prob))
 
   covered_indexes = set()
   for index_set in cand_indexes:
