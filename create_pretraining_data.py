@@ -42,7 +42,7 @@ flags.DEFINE_string("vocab_file", None,
 
 flags.DEFINE_integer("max_seq_length", 512, "Maximum sequence length.")
 
-flags.DEFINE_integer("max_predictions_per_seq", 20,
+flags.DEFINE_integer("max_predictions_per_seq", 80,
                      "Maximum number of masked LM predictions per sequence.")
 
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
@@ -307,17 +307,18 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
     cand_indexes.append([i])
 
   rng.shuffle(cand_indexes)
+  gsg_masked = len(masked_lms)
 
-  num_to_predict = min(max_predictions_per_seq,
-                       max(1, int(round(len(tokens) * masked_lm_prob)))) + int(round(len(tokens) * gsg_prob))
+  num_to_predict = min(max_predictions_per_seq - gsg_masked,
+                       max(1, int(round(len(tokens) * masked_lm_prob))))
 
   covered_indexes = set()
   for index_set in cand_indexes:
-    if len(masked_lms) >= num_to_predict:
+    if len(masked_lms) >= num_to_predict + gsg_masked:
       break
     # If adding a whole-word mask would exceed the maximum number of
     # predictions, then just skip this candidate.
-    if len(masked_lms) + len(index_set) > num_to_predict:
+    if len(masked_lms) + len(index_set) > num_to_predict + gsg_masked:
       continue
     is_any_index_covered = False
     for index in index_set:
@@ -344,7 +345,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
       output_tokens[index] = masked_token
 
       masked_lms.append(MaskedLmInstance(index=index, label=tokens[index]))
-  assert len(masked_lms) <= num_to_predict
+  assert len(masked_lms) <= num_to_predict + gsg_masked
   masked_lms = sorted(masked_lms, key=lambda x: x.index)
 
   masked_lm_positions = []
