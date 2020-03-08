@@ -48,7 +48,7 @@ flags.DEFINE_integer("max_predictions_per_seq", 20,
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
 flags.DEFINE_integer(
-    "dupe_factor", 5,
+    "dupe_factor", 2,
     "Number of times to duplicate the input data (with different masks).")
 
 flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
@@ -294,13 +294,15 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
 
     for pos in range(len(subtree)):
       idx = beg + pos
-      output_tokens[idx] = "[MASK2]"
-      masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
+
+      # We don't want to cover any token twice
+      if (output_tokens[idx] != "[MASK2]"):
+        output_tokens[idx] = "[MASK2]"
+        masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
 
   cand_indexes = []
   for (i, token) in enumerate(tokens):
-    # może by stąd wyrzucić też nawiasy? (bo zgadywanie ich to żadna sztuka)
-    if token == "[CLS]" or token == "[SEP]" or token == "[MASK2]" or token == "(" or token == ")":
+    if token == "[CLS]" or token == "[SEP]" or output_tokens[i] == "[MASK2]" or token == "(" or token == ")":
       continue
     cand_indexes.append([i])
 
