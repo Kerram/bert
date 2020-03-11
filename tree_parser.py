@@ -1,3 +1,5 @@
+import tokenization
+
 def find_end_of_subtree(sentence, pos):
   if sentence[pos] != "(":
     return pos
@@ -98,3 +100,49 @@ def find_subtree(tree, subtree):
 
       if (j == len(subtree ) - 1):
         return i
+
+def find_leaves_helper(sentence, idx):
+  if len(sentence) == 3:
+    return [idx + 1]
+
+  ret = []
+
+  pos = 2
+  while pos + 1 < len(sentence):
+    npos = find_end_of_subtree(sentence, pos) + 1
+    ret.extend(find_leaves_helper (sentence[pos:npos], idx + pos))
+    pos = npos
+
+  return ret
+
+def find_leaves(sentence):
+  return find_leaves_helper(sentence, 0)
+
+# tree = "(a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (real) (fun (real) (bool))) real_lt) (a (c (fun (num) (real)) real_of_num) (a (c (fun (num) (num)) NUMERAL) (c (num) _0)))) (v (real) q))) (a (c (fun (fun (cart (real) N) (bool)) (bool)) !) (l (v (cart (real) N) x') (a (a (c (fun (bool) (fun (bool) (bool))) ==>) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (cart (real) N) (fun (fun (cart (real) N) (bool)) (bool))) IN) (v (cart (real) N) x')) (v (fun (cart (real) N) (bool)) t))) (a (a (c (fun (real) (fun (real) (bool))) real_lt) (a (c (fun (prod (cart (real) N) (cart (real) N)) (real)) distance) (a (a (c (fun (cart (real) N) (fun (cart (real) N) (prod (cart (real) N) (cart (real) N)))) ,) (v (cart (real) N) y)) (v (cart (real) N) x')))) (v (real) q)))) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (c (fun (fun (cart (real) M) (bool)) (bool)) !) (l (v (cart (real) M) x) (a (a (c (fun (bool) (fun (bool) (bool))) ==>) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (cart (real) M) (fun (fun (cart (real) M) (bool)) (bool))) IN) (v (cart (real) M) x)) (v (fun (cart (real) M) (bool)) s))) (a (a (c (fun (cart (real) N) (fun (cart (real) N) (bool))) =) (a (v (fun (cart (real) M) (cart (real) N)) f) (v (cart (real) M) x))) (v (cart (real) N) y)))) (a (c (fun (fun (cart (real) M) (bool)) (bool)) ?) (l (v (cart (real) M) x') (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (cart (real) M) (fun (fun (cart (real) M) (bool)) (bool))) IN) (v (cart (real) M) x')) (v (fun (cart (real) M) (bool)) s))) (a (a (c (fun (cart (real) N) (fun (cart (real) N) (bool))) =) (a (v (fun (cart (real) M) (cart (real) N)) f) (v (cart (real) M) x'))) (v (cart (real) N) x')))) (a (a (c (fun (real) (fun (real) (bool))) real_lt) (a (c (fun (prod (cart (real) M) (cart (real) M)) (real)) distance) (a (a (c (fun (cart (real) M) (fun (cart (real) M) (prod (cart (real) M) (cart (real) M)))) ,) (v (cart (real) M) x)) (v (cart (real) M) x')))) (v (real) d))))))))) (a (c (fun (fun (cart (real) M) (bool)) (bool)) !) (l (v (cart (real) M) x) (a (a (c (fun (bool) (fun (bool) (bool))) ==>) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (cart (real) M) (fun (fun (cart (real) M) (bool)) (bool))) IN) (v (cart (real) M) x)) (v (fun (cart (real) M) (bool)) s))) (a (a (c (fun (cart (real) N) (fun (cart (real) N) (bool))) =) (a (v (fun (cart (real) M) (cart (real) N)) f) (v (cart (real) M) x))) (v (cart (real) N) x')))) (a (c (fun (fun (cart (real) M) (bool)) (bool)) ?) (l (v (cart (real) M) x') (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (bool) (fun (bool) (bool))) /\\) (a (a (c (fun (cart (real) M) (fun (fun (cart (real) M) (bool)) (bool))) IN) (v (cart (real) M) x')) (v (fun (cart (real) M) (bool)) s))) (a (a (c (fun (cart (real) N) (fun (cart (real) N) (bool))) =) (a (v (fun (cart (real) M) (cart (real) N)) f) (v (cart (real) M) x'))) (v (cart (real) N) y)))) (a (a (c (fun (real) (fun (real) (bool))) real_lt) (a (c (fun (prod (cart (real) M) (cart (real) M)) (real)) distance) (a (a (c (fun (cart (real) M) (fun (cart (real) M) (prod (cart (real) M) (cart (real) M)))) ,) (v (cart (real) M) x)) (v (cart (real) M) x')))) (v (real) d)))))))))))))(a (a (c (fun (bool) (fun (bool) (bool))) =) (a (a (c (fun (real) (fun (real) (bool))) real_le) (a (c (fun (cart (real) (1)) (real)) drop) (v (cart (real) (1)) b))) (a (c (fun (cart (real) (1)) (real)) drop) (v (cart (real) (1)) d)))) (c (bool) T))"
+
+# tok = tokenization.LongestTokenizer('vocab.txt')
+# tree = tok.tokenize(tree)
+# subs = split_into_subtrees(tree, 1000)
+# subs = [x for x in subs if len(x) > 200]
+
+# subs = get_small_subtrees(tree, 50, 100)
+
+# for sub in subs:
+#   a = find_subtree(tree, sub)
+#   print (a)
+
+# for i in range (10):
+#   print (subs[i])
+
+# lvs = find_leaves(tree)
+
+# for lv in lvs:
+#   print (lv)
+
+# print(tree[97:])
+# print()
+# print(subs[0])
+# for i in range (len(subs)):
+#   print (subs[i])
+
+# print(len(tree))
