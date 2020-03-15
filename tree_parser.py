@@ -1,4 +1,6 @@
 def find_end_of_subtree(sentence, pos):
+  if pos >= len(sentence):
+    return -1
   if sentence[pos] != "(":
     return pos
   sum = 1
@@ -98,3 +100,21 @@ def find_subtree(tree, subtree):
 
       if (j == len(subtree ) - 1):
         return i
+
+def find_end_of_nonparsable(sentence):
+  end = 0
+  pos = 0
+
+  while True:
+    end = pos
+    pos = find_end_of_subtree(sentence, pos) + 1
+    
+    if (pos <= 0):
+      break
+
+  return end
+
+# nonpars = "((acbacb((()dusi)(kuap) df)))"
+
+# x = find_end_of_nonparsable(nonpars)
+# print ((nonpars[:x]))

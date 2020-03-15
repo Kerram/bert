@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.keras.utils import Progbar
-from tree_parser import is_parsable, split_into_subtrees, get_small_subtrees, find_subtree 
+from tree_parser import is_parsable, split_into_subtrees, get_small_subtrees, find_subtree, find_end_of_nonparsable 
 
 import collections
 import random
@@ -237,10 +237,17 @@ def create_instances_from_document(
   for sentence in document:
     if (not is_parsable(sentence)):
       continue
-    subtrees = split_into_subtrees(sentence, max_num_tokens)
+    
+    # Use too big trees for pretraining to avoid mismatch with fine-tuning
+    subtrees = split_into_subtrees(sentence, 2 * max_num_tokens)
+
+    # Cut the tree if it is too big (same as in holist)
+    for i in range(len(subtrees)):
+      if len(subtrees[i]) > max_num_tokens:
+        subtrees[i] = subtrees[i][:max_num_tokens] 
 
     for subtree in subtrees:
-      if 5 * len(subtree) < max_num_tokens:
+      if 3 * len(subtree) < max_num_tokens:
         continue
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
@@ -278,7 +285,11 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
   min_subtree_size = int(gsg_to_cover * 1 / 5)
   max_subtree_size = int(gsg_to_cover)
 
-  subs = get_small_subtrees(tokens[1:-1], min_subtree_size, max_subtree_size)
+  tree = tokens[1:-1]
+  # We can get subtrees only from parsable part of tree
+  end = find_end_of_nonparsable(tree)
+
+  subs = get_small_subtrees(tree[:end], min_subtree_size, max_subtree_size)
   rng.shuffle(subs)
 
   cover_len = 0
