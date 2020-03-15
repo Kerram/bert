@@ -299,55 +299,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
       if (output_tokens[idx] != "[MASK2]"):
         output_tokens[idx] = "[MASK2]"
         masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
-
-  cand_indexes = []
-  for (i, token) in enumerate(tokens):
-    if token == "[CLS]" or token == "[SEP]" or output_tokens[i] == "[MASK2]":
-      continue
-    cand_indexes.append([i])
-
-  rng.shuffle(cand_indexes)
-  gsg_masked = len(masked_lms)
-
-  num_to_predict = min(max_predictions_per_seq - gsg_masked,
-                       max(1, int(round(len(tokens) * masked_lm_prob))))
-
-  covered_indexes = set()
-  for index_set in cand_indexes:
-    if len(masked_lms) >= num_to_predict + gsg_masked:
-      break
-    # If adding a whole-word mask would exceed the maximum number of
-    # predictions, then just skip this candidate.
-    if len(masked_lms) + len(index_set) > num_to_predict + gsg_masked:
-      continue
-    is_any_index_covered = False
-    for index in index_set:
-      if index in covered_indexes:
-        is_any_index_covered = True
-        break
-    if is_any_index_covered:
-      continue
-    for index in index_set:
-      covered_indexes.add(index)
-
-      masked_token = None
-      # 80% of the time, replace with [MASK]
-      if rng.random() < 0.8:
-        masked_token = "[MASK]"
-      else:
-        # 10% of the time, keep original
-        if rng.random() < 0.5:
-          masked_token = tokens[index]
-        # 10% of the time, replace with random word
-        else:
-          masked_token = vocab_words[rng.randint(0, len(vocab_words) - 1)]
-
-      output_tokens[index] = masked_token
-
-      masked_lms.append(MaskedLmInstance(index=index, label=tokens[index]))
-  assert len(masked_lms) <= num_to_predict + gsg_masked
-  masked_lms = sorted(masked_lms, key=lambda x: x.index)
-
+        
   masked_lm_positions = []
   masked_lm_labels = []
   for p in masked_lms:
