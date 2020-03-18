@@ -353,7 +353,7 @@ class ColaProcessor(DataProcessor):
 
   def get_labels(self):
     """See base class."""
-    return ["0", "1"]
+    return [str(i) for i in range(41)]
 
   def _create_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
@@ -368,7 +368,7 @@ class ColaProcessor(DataProcessor):
         label = "0"
       else:
         text_a = tokenization.convert_to_unicode(line[3])
-        label = tokenization.convert_to_unicode(line[1])
+        label = tokenization.convert_to_unicode(line[2])
       examples.append(
           InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
     return examples
@@ -817,7 +817,7 @@ def main(_):
   label_list = processor.get_labels()
 
   tokenizer = tokenization.LongestTokenizer(
-      vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
+      vocab=FLAGS.vocab_file)
 
   tpu_cluster_resolver = None
   if FLAGS.use_tpu and FLAGS.tpu_name:
