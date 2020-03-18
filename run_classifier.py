@@ -816,7 +816,7 @@ def main(_):
 
   label_list = processor.get_labels()
 
-  tokenizer = tokenization.FullTokenizer(
+  tokenizer = tokenization.LongestTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
 
   tpu_cluster_resolver = None
