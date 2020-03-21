@@ -243,10 +243,12 @@ def create_instances_from_document(
     for subtree in subtrees:
       if 5 * len(subtree) < 3 * max_num_tokens:
         continue
+      
+      subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
+      if (len(subtree) > max_num_tokens):
+        subtree = subtree[:max_num_tokens]
+      
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
-      tokens = list(filter(lambda a: a != '(' and a != ')', tokens))
-      if (len(tokens) > max_num_tokens):
-        tokens = tokens[:max_num_tokens]
       segment_ids = [0] * len(tokens)
 
       (tokens, masked_lm_positions, 
