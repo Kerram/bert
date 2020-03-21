@@ -51,7 +51,7 @@ flags.DEFINE_integer(
     "dupe_factor", 2,
     "Number of times to duplicate the input data (with different masks).")
 
-flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
+flags.DEFINE_float("masked_lm_prob", 0.2, "Masked LM probability.")
 
 
 class TrainingInstance(object):
@@ -238,15 +238,11 @@ def create_instances_from_document(
   for sentence in document:
     if (not is_parsable(sentence)):
       continue
-    subtrees = split_into_subtrees(sentence, 3 * max_num_tokens)
+    subtrees = split_into_subtrees(sentence, max_num_tokens)
 
     for subtree in subtrees:
-      if 5 * len(subtree) < 3 * max_num_tokens:
+      if 5 * len(subtree) <  max_num_tokens:
         continue
-      
-      subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
-      if (len(subtree) > max_num_tokens):
-        subtree = subtree[:max_num_tokens]
       
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
