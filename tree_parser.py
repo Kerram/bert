@@ -1,15 +1,17 @@
 def find_end_of_subtree(sentence, pos):
   if sentence[pos] != "(":
-  	return pos
+    return pos
   sum = 1
   while sum > 0:
-  	pos += 1
-  	if sentence[pos] == "(":
-  	  sum += 1
-  	elif sentence[pos] == ")":
-  	  sum -= 1
-  	if sum == 0:
-  	  return pos
+    pos += 1
+    if (pos >= len(sentence)):
+      return -1
+    if sentence[pos] == "(":
+      sum += 1
+    elif sentence[pos] == ")":
+      sum -= 1
+    if sum == 0:
+      return pos
   return -1
 
 def is_parsable2(sentence):
@@ -19,40 +21,40 @@ def is_parsable2(sentence):
 
 def is_parsable3(sentence):
   if sentence[0] != "(":
-  	return False
+    return False
   if find_end_of_subtree(sentence, 0) != len(sentence) - 1:
-  	return False
+    return False
   if len(sentence) == 3:
-  	return True
+    return True
 
   pos = find_end_of_subtree(sentence, 2) + 1
   if not is_parsable2(sentence[2:pos]):
-  	return False
+    return False
 
   if sentence[1] == 'c' or sentence[1] == 'v' or sentence[1] == 'cart':
     return pos + 2 == len(sentence) 
   else:
-   	return is_parsable2(sentence[pos:(len(sentence) - 1)])
+    return is_parsable2(sentence[pos:(len(sentence) - 1)])
 
 def is_parsable(sentence):
   if len(sentence) == 1:
-  	return True
+    return True
 
   if sentence[0] != '(':
-  	return False
+    return False
   if find_end_of_subtree(sentence, 0) + 1 != len(sentence):
-  	return False
+    return False
   if len(sentence) == 3:
-  	return True
+    return True
 
   pos = 2
   while pos + 1 < len(sentence):
-  	npos = find_end_of_subtree(sentence, pos) + 1
-  	if npos == 0:
-  	  return False
-  	if not is_parsable(sentence[pos:npos]):
-  	  return False
-  	pos = npos
+    npos = find_end_of_subtree(sentence, pos) + 1
+    if npos == 0:
+      return False
+    if not is_parsable(sentence[pos:npos]):
+      return False
+    pos = npos
 
   return True
 
@@ -61,14 +63,14 @@ def split_into_subtrees(sentence, max_size):
     return []
 
   if len(sentence) <= max_size:
-  	return [sentence]
+    return [sentence]
 
   ret = []
   pos = 2
   while pos + 1 < len(sentence):
-  	npos = find_end_of_subtree(sentence, pos) + 1
-  	ret.extend(split_into_subtrees(sentence[pos:npos], max_size))
-  	pos = npos
+    npos = find_end_of_subtree(sentence, pos) + 1
+    ret.extend(split_into_subtrees(sentence[pos:npos], max_size))
+    pos = npos
 
   return ret
 
@@ -96,5 +98,3 @@ def find_subtree(tree, subtree):
 
       if (j == len(subtree ) - 1):
         return i
-
-        

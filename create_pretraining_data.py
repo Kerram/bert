@@ -19,8 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.keras.utils import Progbar
-from tree_parser import is_parsable, split_into_subtrees,
-      get_small_subtrees, find_subtree 
+from tree_parser import is_parsable, split_into_subtrees, get_small_subtrees, find_subtree 
 
 import collections
 import random
@@ -43,18 +42,16 @@ flags.DEFINE_string("vocab_file", None,
 
 flags.DEFINE_integer("max_seq_length", 512, "Maximum sequence length.")
 
-flags.DEFINE_integer("max_predictions_per_seq", 20,
+flags.DEFINE_integer("max_predictions_per_seq", 80,
                      "Maximum number of masked LM predictions per sequence.")
 
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
 flags.DEFINE_integer(
-    "dupe_factor", 20,
+    "dupe_factor", 2,
     "Number of times to duplicate the input data (with different masks).")
 
 flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
-
-flags.DEFINE_float("gsg_prob", 0.1, "Maximal ratio of tokens in covered subtrees")
 
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
@@ -238,7 +235,8 @@ def create_instances_from_document(
   instances = []
 
   for sentence in document:
-    assert is_parsable(sentence)
+    if (not is_parsable(sentence)):
+      continue
     subtrees = split_into_subtrees(sentence, max_num_tokens)
 
     for subtree in subtrees:
@@ -246,6 +244,7 @@ def create_instances_from_document(
         continue
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
+
 
       (tokens, masked_lm_positions, 
         masked_lm_labels) = create_masked_lm_predictions(
@@ -270,6 +269,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
+  gsg_prob = 0.1
   masked_lms = []
   masked_subs = []
   output_tokens = list(tokens)
@@ -294,29 +294,31 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
 
     for pos in range(len(subtree)):
       idx = beg + pos
-      output_tokens[idx] = "[MASK2]"
-      masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
+
+      # We don't want to cover any token twice
+      if (output_tokens[idx] != "[MASK2]"):
+        output_tokens[idx] = "[MASK2]"
+        masked_lms.append(MaskedLmInstance(index=idx, label=tokens[idx]))
 
   cand_indexes = []
   for (i, token) in enumerate(tokens):
-    # może by stąd wyrzucić też nawiasy? (bo zgadywanie ich to żadna sztuka)
-    if token == "[CLS]" or token == "[SEP]" or token == "[MASK2]":
+    if token == "[CLS]" or token == "[SEP]" or output_tokens[i] == "[MASK2]" or token == "(" or token == ")":
       continue
     cand_indexes.append([i])
 
   rng.shuffle(cand_indexes)
+  gsg_masked = len(masked_lms)
 
-  num_to_predict = min(max_predictions_per_seq,
+  num_to_predict = min(max_predictions_per_seq - gsg_masked,
                        max(1, int(round(len(tokens) * masked_lm_prob))))
-                          + int(round(len(tokens) * gsg_prob))
 
   covered_indexes = set()
   for index_set in cand_indexes:
-    if len(masked_lms) >= num_to_predict:
+    if len(masked_lms) >= num_to_predict + gsg_masked:
       break
     # If adding a whole-word mask would exceed the maximum number of
     # predictions, then just skip this candidate.
-    if len(masked_lms) + len(index_set) > num_to_predict:
+    if len(masked_lms) + len(index_set) > num_to_predict + gsg_masked:
       continue
     is_any_index_covered = False
     for index in index_set:
@@ -343,7 +345,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
       output_tokens[index] = masked_token
 
       masked_lms.append(MaskedLmInstance(index=index, label=tokens[index]))
-  assert len(masked_lms) <= num_to_predict
+  assert len(masked_lms) <= num_to_predict + gsg_masked
   masked_lms = sorted(masked_lms, key=lambda x: x.index)
 
   masked_lm_positions = []
