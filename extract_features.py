@@ -25,15 +25,13 @@ import re
 
 import modeling
 import tokenization
+import create_pretraining_data
 import tensorflow as tf
+import random
 
 flags = tf.flags
 
 FLAGS = flags.FLAGS
-
-flags.DEFINE_string("input_file", None, "")
-
-flags.DEFINE_string("output_file", None, "")
 
 flags.DEFINE_string("layers", "-1,-2,-3,-4", "")
 
@@ -42,18 +40,9 @@ flags.DEFINE_string(
     "The config json file corresponding to the pre-trained BERT model. "
     "This specifies the model architecture.")
 
-flags.DEFINE_integer(
-    "max_seq_length", 256,
-    "The maximum total input sequence length after WordPiece tokenization. "
-    "Sequences longer than this will be truncated, and sequences shorter "
-    "than this will be padded.")
-
 flags.DEFINE_string(
     "init_checkpoint", None,
     "Initial checkpoint (usually from a pre-trained BERT model).")
-
-flags.DEFINE_string("vocab_file", None,
-                    "The vocabulary file that the BERT model was trained on.")
 
 flags.DEFINE_bool(
     "do_lower_case", True,
@@ -207,61 +196,21 @@ def model_fn_builder(bert_config, init_checkpoint, layer_indexes, use_tpu,
   return model_fn
 
 
-def convert_examples_to_features(examples, seq_length, tokenizer):
+def convert_examples_to_features(tokens, examples, seq_length, tokenizer):
   """Loads a data file into a list of `InputBatch`s."""
 
   features = []
-  for (ex_index, example) in enumerate(examples):
-    tokens_a = tokenizer.tokenize(example.text_a)
+  for (tks, (ex_index, example)) in zip(tokens, enumerate(examples)):
+    tokens_a = tks
 
-    tokens_b = None
-    if example.text_b:
-      tokens_b = tokenizer.tokenize(example.text_b)
+    if len(tokens_a) > seq_length:
+      tokens_a = tokens_a[0:seq_length]
 
-    if tokens_b:
-      # Modifies `tokens_a` and `tokens_b` in place so that the total
-      # length is less than the specified length.
-      # Account for [CLS], [SEP], [SEP] with "- 3"
-      _truncate_seq_pair(tokens_a, tokens_b, seq_length - 3)
-    else:
-      # Account for [CLS] and [SEP] with "- 2"
-      if len(tokens_a) > seq_length - 2:
-        tokens_a = tokens_a[0:(seq_length - 2)]
-
-    # The convention in BERT is:
-    # (a) For sequence pairs:
-    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-    #  type_ids: 0     0  0    0    0     0       0 0     1  1  1  1   1 1
-    # (b) For single sequences:
-    #  tokens:   [CLS] the dog is hairy . [SEP]
-    #  type_ids: 0     0   0   0  0     0 0
-    #
-    # Where "type_ids" are used to indicate whether this is the first
-    # sequence or the second sequence. The embedding vectors for `type=0` and
-    # `type=1` were learned during pre-training and are added to the wordpiece
-    # embedding vector (and position vector). This is not *strictly* necessary
-    # since the [SEP] token unambiguously separates the sequences, but it makes
-    # it easier for the model to learn the concept of sequences.
-    #
-    # For classification tasks, the first vector (corresponding to [CLS]) is
-    # used as as the "sentence vector". Note that this only makes sense because
-    # the entire model is fine-tuned.
     tokens = []
     input_type_ids = []
-    tokens.append("[CLS]")
-    input_type_ids.append(0)
     for token in tokens_a:
       tokens.append(token)
       input_type_ids.append(0)
-    tokens.append("[SEP]")
-    input_type_ids.append(0)
-
-    if tokens_b:
-      for token in tokens_b:
-        tokens.append(token)
-        input_type_ids.append(1)
-      tokens.append("[SEP]")
-      input_type_ids.append(1)
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -347,8 +296,7 @@ def main(_):
 
   bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
 
-  tokenizer = tokenization.FullTokenizer(
-      vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
+  tokenizer = tokenization.LongestTokenizer(vocab=FLAGS.vocab_file)
 
   is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
   run_config = tf.contrib.tpu.RunConfig(
@@ -358,9 +306,16 @@ def main(_):
           per_host_input_for_training=is_per_host))
 
   examples = read_examples(FLAGS.input_file)
+  input_files = [FLAGS.input_file]
+  rng = random.Random(FLAGS.random_seed)
+  FLAGS.min_mask_tks = 0
+  instances = create_pretraining_data.create_training_instances(
+      input_files, tokenizer, FLAGS.max_seq_length, 1,
+      0, FLAGS.max_predictions_per_seq, rng)
 
+  tokens = [instance.tokens for instance in instances]
   features = convert_examples_to_features(
-      examples=examples, seq_length=FLAGS.max_seq_length, tokenizer=tokenizer)
+      tokens=tokens, examples=examples, seq_length=FLAGS.max_seq_length, tokenizer=tokenizer)
 
   unique_id_to_feature = {}
   for feature in features:
