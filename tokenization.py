@@ -72,7 +72,7 @@ def load_vocab(vocab_file):
   vocab = collections.OrderedDict()
   index = 0
 
-  ctrl_symbols = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "(", ")"]
+  ctrl_symbols = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "[MASK2]" "(", ")"]
   for sym in ctrl_symbols:
     sym = sym.strip()
     vocab[sym] = index
