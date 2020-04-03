@@ -40,18 +40,18 @@ flags.DEFINE_string(
 flags.DEFINE_string("vocab_file", None,
                     "The vocabulary file that the BERT model was trained on.")
 
-flags.DEFINE_integer("max_seq_length", 512, "Maximum sequence length.")
+flags.DEFINE_integer("max_seq_length", 128, "Maximum sequence length.")
 
-flags.DEFINE_integer("max_predictions_per_seq", 80,
+flags.DEFINE_integer("max_predictions_per_seq", 20,
                      "Maximum number of masked LM predictions per sequence.")
 
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
 flags.DEFINE_integer(
-    "dupe_factor", 2,
+    "dupe_factor", 5,
     "Number of times to duplicate the input data (with different masks).")
 
-flags.DEFINE_float("masked_lm_prob", 0.2, "Masked LM probability.")
+flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
 
 
 class TrainingInstance(object):
@@ -238,27 +238,24 @@ def create_instances_from_document(
   for sentence in document:
     if (not is_parsable(sentence)):
       continue
-    subtrees = split_into_subtrees(sentence, max_num_tokens)
 
-    for subtree in subtrees:
-      if 5 * len(subtree) <  max_num_tokens:
-        continue
-      
-      tokens = ["[CLS]"] + subtree + ["[SEP]"]
-      segment_ids = [0] * len(tokens)
+    sentence = list(filter(lambda a: a != '(' and a != ')', sentence))
 
-      (tokens, masked_lm_positions, 
-        masked_lm_labels) = create_masked_lm_predictions(
-               tokens, masked_lm_prob, max_predictions_per_seq, vocab_words, rng)
-          
-      instance = TrainingInstance(
-        tokens=tokens,
-        segment_ids=segment_ids,
-        is_random_next=False,
-        masked_lm_positions=masked_lm_positions,
-        masked_lm_labels=masked_lm_labels)
-      
-      instances.append(instance)
+    tokens = ["[CLS]"] + sentence + ["[SEP]"]
+    segment_ids = [0] * len(tokens)
+
+    (tokens, masked_lm_positions, 
+      masked_lm_labels) = create_masked_lm_predictions(
+             tokens, masked_lm_prob, max_predictions_per_seq, vocab_words, rng)
+        
+    instance = TrainingInstance(
+      tokens=tokens,
+      segment_ids=segment_ids,
+      is_random_next=False,
+      masked_lm_positions=masked_lm_positions,
+      masked_lm_labels=masked_lm_labels)
+    
+    instances.append(instance)
   return instances
 
 
