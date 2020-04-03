@@ -25,7 +25,7 @@ import re
 
 import modeling
 import tokenization
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 flags = tf.flags
 
@@ -347,8 +347,7 @@ def main(_):
 
   bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
 
-  tokenizer = tokenization.FullTokenizer(
-      vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
+  tokenizer = tokenization.LongestTokenizer(vocab=FLAGS.vocab_file)
 
   is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
   run_config = tf.contrib.tpu.RunConfig(
