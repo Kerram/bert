@@ -12,6 +12,7 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+import sys
 
 flags = tf.flags
 
@@ -229,7 +230,7 @@ class DeepholProcessor(DataProcessor):
           InputExample(guid=guid, goal=goal, thm=thm, tac_id=tac_id, is_negative=is_negative))
     return examples
 
-def convert_tokens(tokens):
+def convert_tokens(tokens, tokenizer, max_seq_length):
   res = []
   segment_ids = []
   res.append("[CLS]")
@@ -286,8 +287,8 @@ def convert_single_example(ex_index, example, tac_label_list, is_negative_label_
   if len(t_tokens) > max_seq_length - 2:
     t_tokens = t_tokens[0:(max_seq_length - 2)]
 
-  (goal_tokens, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(g_tokens)
-  (thm_tokens, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(t_tokens)
+  (goal_tokens, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(g_tokens, tokenizer, max_seq_length)
+  (thm_tokens, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(t_tokens, tokenizer, max_seq_length)
 
   assert len(goal_input_ids) == max_seq_length
   assert len(goal_input_mask) == max_seq_length
@@ -325,12 +326,12 @@ def convert_single_example(ex_index, example, tac_label_list, is_negative_label_
       thm_segment_ids = thm_segment_ids,
       tac_id = tac_id,
       is_negative = is_negative,
-      is_real_example = is_real_example)
+      is_real_example = True)
   
   return feature
 
 def file_based_convert_examples_to_features(
-    examples, label_list, max_seq_length, tokenizer, output_file):
+    examples, tac_label_list, is_negative_list, max_seq_length, tokenizer, output_file):
   """Convert a set of `InputExample`s to a TFRecord file."""
 
   writer = tf.python_io.TFRecordWriter(output_file)
@@ -339,7 +340,7 @@ def file_based_convert_examples_to_features(
     if ex_index % 10000 == 0:
       tf.logging.info("Writing example %d of %d" % (ex_index, len(examples)))
 
-    feature = convert_single_example(ex_index, example, label_list,
+    feature = convert_single_example(ex_index, example, tac_label_list, is_negative_list,
                                      max_seq_length, tokenizer)
 
     def create_int_feature(values):
@@ -413,7 +414,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
 
   return input_fn
 
-def create_encoding(name, bert_config, input_ids, input_mask, segment_ids, use_one_hot_embeddings):
+def create_encoding(name, is_training, bert_config, input_ids, input_mask, segment_ids, use_one_hot_embeddings):
   with tf.variable_scope(name):
     model = modeling.BertModel(
     config=bert_config,
@@ -447,18 +448,24 @@ def tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels):
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
     log_probs = tf.nn.log_softmax(tac_logits, axis=-1)
 
-    one_hot_labels = tf.one_hot(labels, depth=num_tac_labels, dtype=tf.float32)
+    one_hot_labels = tf.one_hot(tac_labels, depth=num_tac_labels, dtype=tf.float32)
 
     tac_per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
     tac_loss = tf.reduce_mean(tac_per_example_loss)
+
+    tf.logging.info("tac_logits.shape = %s" % (tac_logits.shape))
+    tf.logging.info("tac_per_example_loss.shape = %s" % (tac_per_example_loss.shape))
+    # tac_per_example_loss = tf.print(tac_per_example_loss, [tf.shape(tac_per_example_loss)], "tac_per_example_loss_shape: ", summarize =-1)
+    # tac_logits = tf.print(tac_logits, [tf.shape(tac_logits)], "tac_logits_shape: ", summarize =-1)
 
     return (tac_loss, tac_per_example_loss, tac_logits, tac_probabilities)
 
 
 def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_labels):
   # concat goal_net, thm_net and their dot product as in deephol
-  hidden_size = goal_net.shape[-1].value  
-  net = tf.concat([goal_net, thm_net, tf.muliply(goal_net, thm_net)])
+  hidden_size = goal_net.shape[-1].value 
+  #[batch_size, 3 * hidden_size] 
+  net = tf.concat([goal_net, thm_net, goal_net * thm_net], -1)
 
   # Adding 3 dense layers with dropout like in deephol
   with tf.variable_scope("loss"):
@@ -474,31 +481,44 @@ def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_
       net = tf.nn.dropout(net, keep_prob=0.7)
     net = tf.layers.dense(net, hidden_size, activation=tf.nn.relu, name='par_dense3')
 
+    #[batch_size, 1]
     par_logits = tf.layers.dense(net, 1, activation=None)
 
-    par_loss = 0.5 * tf.losses.sigmoid_cross_entropy(
-        multi_class_labels=tf.expand_dims(is_negative_labels, 1),
-        logits=par_logits,
-        reduction=tf.losses.Reduction.SUM)
+    #[batch_size, 1]
+    par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
+      labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),
+      logits=par_logits)
 
-    par_logits = tf.squeeze(par_logits)
+    #[batch_size]
+    par_logits = tf.squeeze(par_logits, [1])
+    par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
 
-    return (par_loss, par_logits)
+    #  sum, not mean, as opposed to tactic classifier
+    #  a bit strange but they did so in deephol
+    #  presumably it makes the code less scalable for batch_size
+    par_loss = tf.reduce_sum(par_per_example_loss)
+
+    tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
+    tf.logging.info("par_per_example_loss.shape = %s" % (par_per_example_loss.shape))
+    # par_logits = tf.print(par_logits, [tf.shape(par_logits)], "par_logits_shape: ", summarize =-1)
+    # par_per_example_loss = tf.print(par_per_example_loss, [tf.shape(par_per_example_loss)], "par_per_example_loss_shape: ", summarize =-1)
+
+    return (par_loss, par_per_example_loss, par_logits)
 
 def create_model(bert_config, goal_input_ids, goal_input_mask, goal_segment_ids,
                  thm_input_ids, thm_input_mask, thm_segment_ids, use_one_hot_embeddings,
                  tac_labels, num_tac_labels, is_negative_labels, is_training):
 
   with tf.variable_scope('pairwise_encoder'):
-    goal_net = create_encoding('goal', bert_config, goal_input_ids, goal_input_mask, goal_segment_ids, use_one_hot_embeddings)
-    thm_net = create_encoding('thm', bert_config, thm_input_ids, thm_input_mask, thm_segment_ids, use_one_hot_embeddings)
+    goal_net = create_encoding('goal', is_training, bert_config, goal_input_ids, goal_input_mask, goal_segment_ids, use_one_hot_embeddings)
+    thm_net = create_encoding('thm', is_training, bert_config, thm_input_ids, thm_input_mask, thm_segment_ids, use_one_hot_embeddings)
 
     (tac_loss, tac_per_example_loss, tac_logits, tac_probabilities) = tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels)
-    (par_loss, par_logits) = pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_labels)
+    (par_loss, par_per_example_loss, par_logits) = pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_labels)
 
     total_loss = par_loss + tac_loss
 
-    return (total_loss, tac_loss, tac_per_example_loss, tac_logits, tac_probabilities, par_loss, par_logits)
+    return (total_loss, par_per_example_loss, tac_per_example_loss, tac_logits, tac_probabilities, par_loss, par_logits)
 
 
 # Kuba's hack
@@ -549,7 +569,7 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
     is_training = (mode == tf.estimator.ModeKeys.TRAIN)
 
-    (total_loss, tac_loss, tac_per_example_loss, tac_logits, tac_probabilities, par_loss, par_logits) = create_model(
+    (total_loss, par_per_example_loss, tac_per_example_loss, tac_logits, tac_probabilities, par_loss, par_logits) = create_model(
       bert_config, goal_input_ids, goal_input_mask, goal_segment_ids,
       thm_input_ids, thm_input_mask, thm_segment_ids, use_one_hot_embeddings,
       tac_ids, num_tac_labels, is_negative, is_training)
@@ -566,14 +586,14 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
       if use_tpu:    
         def tpu_scaffold():
           tf.train.warm_start(
-              params.bert_checkpoint,
+              init_checkpoint,
               'pairwise_encoder/thm/bert*',
               None,
               Remover(['pairwise_encoder/thm/'])
           )
 
           tf.train.warm_start(
-              params.bert_checkpoint,
+              init_checkpoint,
               'pairwise_encoder/goal/bert*',
               None,
               Remover(['pairwise_encoder/goal/'])
@@ -585,14 +605,14 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
       else:
         tf.train.warm_start(
-            params.bert_checkpoint,
+            init_checkpoint,
             'pairwise_encoder/thm/bert*',
             None,
             Remover(['pairwise_encoder/thm/'])
         )
 
         tf.train.warm_start(
-            params.bert_checkpoint,
+            init_checkpoint,
             'pairwise_encoder/goal/bert*',
             None,
             Remover(['pairwise_encoder/goal/'])
@@ -622,7 +642,7 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
     elif mode == tf.estimator.ModeKeys.EVAL:
 
-      def metric_fn(tac_per_example_loss, tac_logits, par_loss, par_logits):
+      def metric_fn(tac_per_example_loss, tac_logits, par_per_example_loss, par_logits):
         tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
         
         # Tactic accuracy
@@ -632,8 +652,10 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
         # Top 5 tactics accuracy
         tac_topk_accuracy = tf_reduce_mean_weighted(
           tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), is_real_example)
-
+ 
+        # for evaluation we count mean of both losses
         tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)
+        par_loss = tf.metrics.mean(values=par_per_example_loss, weights=is_real_example)
 
         tot_loss = tac_loss + par_loss
 
@@ -662,7 +684,7 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
         return res
 
-      eval_metrics = (metric_fn, [tac_per_example_loss, tac_logits, par_loss, par_logits])
+      eval_metrics = (metric_fn, [tac_per_example_loss, tac_logits, par_per_example_loss, par_logits])
 
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
@@ -687,6 +709,7 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
 
 def main(_):
+  csv.field_size_limit(sys.maxsize)
   tf.logging.set_verbosity(tf.logging.INFO)
 
   if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:
@@ -725,6 +748,7 @@ def main(_):
           per_host_input_for_training=is_per_host))    
 
   tac_labels = processor.get_tac_labels()
+  is_negative_labels = processor.get_is_negative_labels()
 
   train_examples = None
   num_train_steps = None
@@ -757,7 +781,7 @@ def main(_):
   if FLAGS.do_train:
     train_file = os.path.join(FLAGS.output_dir, "train.tf_record")
     file_based_convert_examples_to_features(
-        train_examples, label_list, FLAGS.max_seq_length, tokenizer, train_file)
+        train_examples, tac_labels, is_negative_labels, FLAGS.max_seq_length, tokenizer, train_file)
     tf.logging.info("***** Running training *****")
     tf.logging.info("  Num examples = %d", len(train_examples))
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
@@ -784,7 +808,7 @@ def main(_):
 
     eval_file = os.path.join(FLAGS.output_dir, "eval.tf_record")
     file_based_convert_examples_to_features(
-        eval_examples, label_list, FLAGS.max_seq_length, tokenizer, eval_file)
+        eval_examples, tac_labels, is_negative_labels, FLAGS.max_seq_length, tokenizer, eval_file)
 
     tf.logging.info("***** Running evaluation *****")
     tf.logging.info("  Num examples = %d (%d actual, %d padding)",
@@ -809,6 +833,13 @@ def main(_):
 
     result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
 
+    output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
+    with tf.gfile.GFile(output_eval_file, "w") as writer:
+      tf.logging.info("***** Eval results *****")
+      for key in sorted(result.keys()):
+        tf.logging.info("  %s = %s", key, str(result[key]))
+        writer.write("%s = %s\n" % (key, str(result[key])))
+
   if FLAGS.do_predict:
     predict_examples = processor.get_test_examples(FLAGS.data_dir)
     num_actual_predict_examples = len(predict_examples)
@@ -821,7 +852,7 @@ def main(_):
         predict_examples.append(PaddingInputExample())
 
     predict_file = os.path.join(FLAGS.output_dir, "predict.tf_record")
-    file_based_convert_examples_to_features(predict_examples, label_list,
+    file_based_convert_examples_to_features(predict_examples, tac_labels, is_negative_labels,
                                             FLAGS.max_seq_length, tokenizer,
                                             predict_file)
 
