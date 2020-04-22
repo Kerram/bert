@@ -184,7 +184,7 @@ class DataProcessor(object):
 
 
 class DeepholProcessor(DataProcessor):
-    """Processor for Deephol dataset"""
+  """Processor for Deephol dataset"""
 
   def get_train_examples(self, data_dir):
     """See base class."""
@@ -274,7 +274,7 @@ def convert_single_example(ex_index, example, tac_label_list, is_negative_label_
     tac_label_map[label] = i
 
   is_negative_label_map = {}
-    for (i, label) in enumerate(is_negative_label_list):
+  for (i, label) in enumerate(is_negative_label_list):
     is_negative_label_map[label] = i
 
   g_tokens = tokenizer.tokenize(example.goal)
@@ -585,18 +585,18 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
       else:
         tf.train.warm_start(
-              params.bert_checkpoint,
-              'pairwise_encoder/thm/bert*',
-              None,
-              Remover(['pairwise_encoder/thm/'])
-          )
+            params.bert_checkpoint,
+            'pairwise_encoder/thm/bert*',
+            None,
+            Remover(['pairwise_encoder/thm/'])
+        )
 
-          tf.train.warm_start(
-              params.bert_checkpoint,
-              'pairwise_encoder/goal/bert*',
-              None,
-              Remover(['pairwise_encoder/goal/'])
-          )
+        tf.train.warm_start(
+            params.bert_checkpoint,
+            'pairwise_encoder/goal/bert*',
+            None,
+            Remover(['pairwise_encoder/goal/'])
+        )
 
     # Ten komunikat się nie będzie do końca zgadzał
     tf.logging.info("**** Trainable Variables ****")
@@ -623,42 +623,42 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
     elif mode == tf.estimator.ModeKeys.EVAL:
 
       def metric_fn(tac_per_example_loss, tac_logits, par_loss, par_logits):
-          tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
-          
-          # Tactic accuracy
-          tac_accuracy = tf.metrics.accuracy(
-            labels=tac_ids, predictions=tac_predictions, weights=is_real_example)
-          
-          # Top 5 tactics accuracy
-          tac_topk_accuracy = tf_reduce_mean_weighted(
-            tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), is_real_example)
+        tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
+        
+        # Tactic accuracy
+        tac_accuracy = tf.metrics.accuracy(
+          labels=tac_ids, predictions=tac_predictions, weights=is_real_example)
+        
+        # Top 5 tactics accuracy
+        tac_topk_accuracy = tf_reduce_mean_weighted(
+          tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), is_real_example)
 
-          tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)
+        tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)
 
-          tot_loss = tac_loss + par_loss
+        tot_loss = tac_loss + par_loss
 
-          pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)
-          neg_logits = tf.boolean_mask(par_logits, is_negative)
-          pos_pred = tf.sigmoid(pos_logits)
-          neg_pred = tf.sigmoid(neg_logits)
-          pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))
-          neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
-          acc_50_50 = (pos_acc + neg_acc) / 2.
+        pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)
+        neg_logits = tf.boolean_mask(par_logits, is_negative)
+        pos_pred = tf.sigmoid(pos_logits)
+        neg_pred = tf.sigmoid(neg_logits)
+        pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))
+        neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
+        acc_50_50 = (pos_acc + neg_acc) / 2.
 
-          res = {
-            'pos_logits': tf.reduce_mean(pos_logits),
-            'neg_logits': tf.reduce_mean(neg_logits),
-            'pos_pred': tf.reduce_mean(pos_pred),
-            'neg_pred': tf.reduce_mean(neg_pred),
-            'pos_acc': pos_acc,
-            'neg_acc': neg_acc,
-            'acc_50_50': acc_50_50,
-            'tac_accuracy': tac_accuracy,
-            'tac_topk_accuracy': tac_topk_accuracy,
-            'tac_loss': tac_loss,
-            'par_loss': par_loss,
-            'total_loss': tot_loss, 
-          }
+        res = {
+          'pos_logits': tf.reduce_mean(pos_logits),
+          'neg_logits': tf.reduce_mean(neg_logits),
+          'pos_pred': tf.reduce_mean(pos_pred),
+          'neg_pred': tf.reduce_mean(neg_pred),
+          'pos_acc': pos_acc,
+          'neg_acc': neg_acc,
+          'acc_50_50': acc_50_50,
+          'tac_accuracy': tac_accuracy,
+          'tac_topk_accuracy': tac_topk_accuracy,
+          'tac_loss': tac_loss,
+          'par_loss': par_loss,
+          'total_loss': tot_loss, 
+        }
 
         return res
 
@@ -672,13 +672,13 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
     else:
       preds = {
-        'tac_probabilities': tac_probabilities
+        'tac_probabilities': tac_probabilities,
         'is_negative_prob': tf.sigmoid(par_logits)
       }
 
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
-          predictions=preds
+          predictions=preds,
           scaffold_fn=scaffold_fn)
     
     return output_spec
@@ -858,7 +858,6 @@ def main(_):
 
 if __name__ == "__main__":
   flags.mark_flag_as_required("data_dir")
-  flags.mark_flag_as_required("task_name")
   flags.mark_flag_as_required("vocab_file")
   flags.mark_flag_as_required("bert_config_file")
   flags.mark_flag_as_required("output_dir")
