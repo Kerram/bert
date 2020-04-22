@@ -642,41 +642,43 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
     elif mode == tf.estimator.ModeKeys.EVAL:
 
-      def metric_fn(tac_per_example_loss, tac_logits, par_per_example_loss, par_logits):
+      def metric_fn(tac_per_example_loss, tac_logits, par_per_example_loss, par_logits, tac_ids, is_negative, is_real_example):
         tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
         
         # Tactic accuracy
         tac_accuracy = tf.metrics.accuracy(
           labels=tac_ids, predictions=tac_predictions, weights=is_real_example)
         
-        # Top 5 tactics accuracy
-        tac_topk_accuracy = tf_reduce_mean_weighted(
-          tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), is_real_example)
- 
+        # Top 5 tactics accuracy        
+        topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))        
+        topk_preds = tf.boolean_mask(topk_preds, is_real_example)        
+        tac_topk_accuracy = tf.reduce_mean(topk_preds)
+        
         # for evaluation we count mean of both losses
-        tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)
+        tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)        
         par_loss = tf.metrics.mean(values=par_per_example_loss, weights=is_real_example)
-
+        
+        
         tot_loss = tac_loss + par_loss
 
-        pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)
-        neg_logits = tf.boolean_mask(par_logits, is_negative)
-        pos_pred = tf.sigmoid(pos_logits)
-        neg_pred = tf.sigmoid(neg_logits)
-        pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))
-        neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
+        pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)        
+        neg_logits = tf.boolean_mask(par_logits, is_negative)        
+        pos_pred = tf.sigmoid(pos_logits)        
+        neg_pred = tf.sigmoid(neg_logits)        
+        pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))        
+        neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))        
         acc_50_50 = (pos_acc + neg_acc) / 2.
 
         res = {
-          'pos_logits': tf.reduce_mean(pos_logits),
-          'neg_logits': tf.reduce_mean(neg_logits),
-          'pos_pred': tf.reduce_mean(pos_pred),
-          'neg_pred': tf.reduce_mean(neg_pred),
-          'pos_acc': pos_acc,
-          'neg_acc': neg_acc,
-          'acc_50_50': acc_50_50,
+          # 'pos_logits': tf.reduce_mean(pos_logits),
+          # 'neg_logits': tf.reduce_mean(neg_logits),
+          # 'pos_pred': tf.reduce_mean(pos_pred),
+          # 'neg_pred': tf.reduce_mean(neg_pred),
+          # 'pos_acc': pos_acc,
+          # 'neg_acc': neg_acc,
+          # 'acc_50_50': acc_50_50,
           'tac_accuracy': tac_accuracy,
-          'tac_topk_accuracy': tac_topk_accuracy,
+          # 'tac_topk_accuracy': tac_topk_accuracy,
           'tac_loss': tac_loss,
           'par_loss': par_loss,
           'total_loss': tot_loss, 
@@ -684,7 +686,7 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
 
         return res
 
-      eval_metrics = (metric_fn, [tac_per_example_loss, tac_logits, par_per_example_loss, par_logits])
+      eval_metrics = (metric_fn, [tac_per_example_loss, tac_logits, par_per_example_loss, par_logits, tac_ids, is_negative, is_real_example])
 
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
