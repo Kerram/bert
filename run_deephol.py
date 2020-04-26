@@ -543,6 +543,11 @@ class Remover:
     return self.keys_list
 
 
+def reduce_mean_weighted(values, weights):
+  weights = tf.to_float(weights)
+  w_sum = tf.math.reduce_sum(weights)
+  mean = tf.divide(tf.reduce_sum(values * weights), w_sum)
+  return tf.cond(tf.equal(w_sum, tf.constant(0.)), lambda: tf.constant(0.), lambda: mean)
 
 def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, use_tpu, use_one_hot_embeddings):
@@ -651,8 +656,8 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
         
         # Top 5 tactics accuracy        
         topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))        
-        topk_preds = tf.boolean_mask(topk_preds, is_real_example)        
-        tac_topk_accuracy = tf.reduce_mean(topk_preds)
+        # topk_preds = tf.boolean_mask(topk_preds, is_real_example)        
+        tac_topk_accuracy = tf.metrics.mean(values=topk_preds, weights=is_real_example)
         
         # for evaluation we count mean of both losses
         tac_loss = tf.metrics.mean(values=tac_per_example_loss, weights=is_real_example)        
@@ -661,24 +666,40 @@ def model_fn_builder(bert_config, num_tac_labels, init_checkpoint, learning_rate
         
         tot_loss = tac_loss + par_loss
 
-        pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)        
-        neg_logits = tf.boolean_mask(par_logits, is_negative)        
-        pos_pred = tf.sigmoid(pos_logits)        
-        neg_pred = tf.sigmoid(neg_logits)        
-        pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))        
-        neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))        
-        acc_50_50 = (pos_acc + neg_acc) / 2.
+        par_pred = tf.sigmoid(par_logits)
+        pos_guess = tf.to_float(tf.greater(par_pred, 0.5))
+        neg_guess = tf.to_float(tf.less(par_pred, 0.5))
+
+        is_negative = tf.to_float(is_negative)
+        pos_acc = tf.metrics.mean(values=pos_guess, weights=is_real_example * (is_negative))
+        neg_acc = tf.metrics.mean(values=neg_guess, weights=is_real_example * (1-is_negative))
+        # pos_logits = reduce_mean_weighted(par_logits, 1 - is_negative)
+        # neg_logits = reduce_mean_weighted(pos_logits, is_negative)
+
+        # pos_pred = reduce_mean_weighted(par_pred, 1 - is_negative)
+        # neg_pred = reduce_mean_weighted(par_pred, is_negative)
+
+        # pos_acc = reduce_mean_weighted(pos_guess, 1 - is_negative)
+        # neg_acc = reduce_mean_weighted(pos_guess, is_negative)
+
+        # pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)        
+        # neg_logits = tf.boolean_mask(par_logits, is_negative)        
+        # pos_pred = tf.sigmoid(pos_logits)        
+        # neg_pred = tf.sigmoid(neg_logits)        
+        # pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))        
+        # neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))        
+        # acc_50_50 = (pos_acc + neg_acc) / 2.
 
         res = {
-          # 'pos_logits': tf.reduce_mean(pos_logits),
-          # 'neg_logits': tf.reduce_mean(neg_logits),
-          # 'pos_pred': tf.reduce_mean(pos_pred),
-          # 'neg_pred': tf.reduce_mean(neg_pred),
-          # 'pos_acc': pos_acc,
-          # 'neg_acc': neg_acc,
+          # 'pos_logits': pos_logits,
+          # 'neg_logits': neg_logits,
+          # 'pos_pred': pos_pred,
+          # 'neg_pred': neg_pred,
+          'pos_acc': pos_acc,
+          'neg_acc': neg_acc,
           # 'acc_50_50': acc_50_50,
           'tac_accuracy': tac_accuracy,
-          # 'tac_topk_accuracy': tac_topk_accuracy,
+          'tac_topk_accuracy': tac_topk_accuracy,
           'tac_loss': tac_loss,
           'par_loss': par_loss,
           'total_loss': tot_loss, 
