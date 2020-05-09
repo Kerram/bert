@@ -42,6 +42,8 @@ flags.DEFINE_string("vocab_file", None,
 
 flags.DEFINE_integer("max_seq_length", 512, "Maximum sequence length.")
 
+flags.DEFINE_integer("min_mask_tks", 1, "Minimum number of tokens to mask.")
+
 flags.DEFINE_integer("max_predictions_per_seq", 80,
                      "Maximum number of masked LM predictions per sequence.")
 
@@ -285,7 +287,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
   output_tokens = list(tokens)
 
   num_to_predict = min(max_predictions_per_seq,
-                       max(1, int(round(len(tokens) * masked_lm_prob))))
+                       max(FLAGS.min_mask_tks, int(round(len(tokens) * masked_lm_prob))))
 
   masked_lms = []
   covered_indexes = set()
