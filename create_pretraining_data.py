@@ -271,6 +271,7 @@ def create_instances_from_document(
         masked_lm_labels=masked_lm_labels)
 
       instances.append(instance)
+      break
   return instances
 
 
