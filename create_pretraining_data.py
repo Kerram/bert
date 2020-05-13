@@ -50,7 +50,7 @@ flags.DEFINE_integer("max_predictions_per_seq", 80,
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
 flags.DEFINE_integer(
-    "dupe_factor", 2,
+    "dupe_factor", 1,
     "Number of times to duplicate the input data (with different masks).")
 
 flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
@@ -223,6 +223,7 @@ def create_training_instances(input_files, tokenizer, max_seq_length,
               masked_lm_prob, max_predictions_per_seq, vocab_words, rng))
     bar2.add(1)
 
+  print('instances after', len(instances))
   rng.shuffle(instances)
   return instances
 
@@ -232,7 +233,7 @@ def create_instances_from_document(
     masked_lm_prob, max_predictions_per_seq, vocab_words, rng):
   """Creates `TrainingInstance`s for a single document."""
   document = all_documents[document_index]
-
+  print('single doc', len(document))
   # Account for [CLS] and [SEP]
   max_num_tokens = max_seq_length - 2
 
