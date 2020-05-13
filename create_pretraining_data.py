@@ -212,6 +212,7 @@ def create_training_instances(input_files, tokenizer, max_seq_length,
   rng.shuffle(all_documents)
 
   instances = []
+  print('alldocslen', len(all_documents))
 
   bar2 = Progbar(dupe_factor)
   for _ in range(dupe_factor):
