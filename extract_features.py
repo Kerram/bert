@@ -200,6 +200,7 @@ def convert_examples_to_features(tokens, examples, seq_length, tokenizer):
   """Loads a data file into a list of `InputBatch`s."""
 
   features = []
+  print('converting')
   for (tks, (ex_index, example)) in zip(tokens, enumerate(examples)):
     tokens_a = tks
 
@@ -317,7 +318,8 @@ def main(_):
   tokens = [instance.tokens for instance in instances]
   features = convert_examples_to_features(
       tokens=tokens, examples=examples, seq_length=FLAGS.max_seq_length, tokenizer=tokenizer)
-
+  print(len(features))
+  exit(1)
   unique_id_to_feature = {}
   for feature in features:
     unique_id_to_feature[feature.unique_id] = feature
