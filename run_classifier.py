@@ -957,6 +957,8 @@ def main(_):
       num_written_lines = 0
       tf.logging.info("***** Predict results *****")
       tf.logging.info(result)
+      for x in enumerate(result):
+          tf.logging.info(x)
       # for (i, prediction) in enumerate(result):
       #   probabilities = prediction["probabilities"]
       #   if i >= num_actual_predict_examples:
