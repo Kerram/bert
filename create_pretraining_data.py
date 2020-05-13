@@ -238,8 +238,10 @@ def create_instances_from_document(
   max_num_tokens = max_seq_length - 2
 
   instances = []
-
+  ind = 0
   for sentence in document:
+    print(f'{ind} --', len(instances))
+    ind += 1
     if (not is_parsable(sentence)):
       print('me, skipping sentence')
       continue
