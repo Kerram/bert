@@ -251,8 +251,8 @@ def create_instances_from_document(
       if 5 * len(subtree) < 3 * max_num_tokens:
         continue
 
-      print(f'for ind {ind} good subtree {subtree}')
       subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
+      print(f"for ind {ind} good subtree {' '.join(subtree)}")
       if (len(subtree) > max_num_tokens):
         subtree = subtree[:max_num_tokens]
 
