@@ -314,7 +314,6 @@ def main(_):
       0, FLAGS.max_predictions_per_seq, rng)
 
   print(len(instances))
-  exit(1)
   tokens = [instance.tokens for instance in instances]
   features = convert_examples_to_features(
       tokens=tokens, examples=examples, seq_length=FLAGS.max_seq_length, tokenizer=tokenizer)
