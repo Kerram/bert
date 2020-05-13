@@ -241,12 +241,12 @@ def create_instances_from_document(
 
   for sentence in document:
     if (not is_parsable(sentence)):
+      print('me, skipping sentence')
       continue
     subtrees = split_into_subtrees(sentence, 3 * max_num_tokens)
 
     for subtree in subtrees:
       if 5 * len(subtree) < 3 * max_num_tokens:
-        print('me, skipping')
         continue
       
       subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
