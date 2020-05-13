@@ -246,6 +246,7 @@ def create_instances_from_document(
 
     for subtree in subtrees:
       if 5 * len(subtree) < 3 * max_num_tokens:
+        print('me, skipping')
         continue
       
       subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
