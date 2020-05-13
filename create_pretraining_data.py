@@ -250,25 +250,26 @@ def create_instances_from_document(
     for subtree in subtrees:
       if 5 * len(subtree) < 3 * max_num_tokens:
         continue
-      
+
+      print(f'for ind {ind} good subtree {subtree}')
       subtree = list(filter(lambda a: a != '(' and a != ')', subtree))
       if (len(subtree) > max_num_tokens):
         subtree = subtree[:max_num_tokens]
-      
+
       tokens = ["[CLS]"] + subtree + ["[SEP]"]
       segment_ids = [0] * len(tokens)
 
-      (tokens, masked_lm_positions, 
-        masked_lm_labels) = create_masked_lm_predictions(
-               tokens, masked_lm_prob, max_predictions_per_seq, vocab_words, rng)
-          
+      (tokens, masked_lm_positions,
+       masked_lm_labels) = create_masked_lm_predictions(
+        tokens, masked_lm_prob, max_predictions_per_seq, vocab_words, rng)
+
       instance = TrainingInstance(
         tokens=tokens,
         segment_ids=segment_ids,
         is_random_next=False,
         masked_lm_positions=masked_lm_positions,
         masked_lm_labels=masked_lm_labels)
-      
+
       instances.append(instance)
   return instances
 
