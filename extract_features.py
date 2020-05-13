@@ -201,7 +201,10 @@ def convert_examples_to_features(tokens, examples, seq_length, tokenizer):
 
   features = []
   print('converting')
+  ind = 0
   for (tks, (ex_index, example)) in zip(tokens, enumerate(examples)):
+    print('loop', ind)
+    ind += 1
     tokens_a = tks
 
     if len(tokens_a) > seq_length:
