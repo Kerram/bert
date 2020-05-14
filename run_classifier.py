@@ -589,15 +589,16 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   # instead.
   output_layer = model.get_pooled_output()
 
+  tf.logging.info(output_layer)
+  tf.logging.info('XXX')
+  exit(1)
+
   hidden_size = output_layer.shape[-1].value
 
   output_weights = tf.get_variable(
       "output_weights", [num_labels, hidden_size],
       initializer=tf.truncated_normal_initializer(stddev=0.02))
 
-  tf.logging.info(output_weights)
-  tf.logging.info('XXX')
-  exit(1)
 
   output_bias = tf.get_variable(
       "output_bias", [num_labels], initializer=tf.zeros_initializer())
