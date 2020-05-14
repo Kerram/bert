@@ -589,10 +589,6 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   # instead.
   output_layer = model.get_pooled_output()
 
-  tf.logging.info(output_layer)
-  tf.logging.info('XXX')
-  exit(1)
-
   hidden_size = output_layer.shape[-1].value
 
   output_weights = tf.get_variable(
