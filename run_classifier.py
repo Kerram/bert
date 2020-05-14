@@ -699,7 +699,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
     else:
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
-          predictions={"probabilities": real_output},
+          predictions={"probabilities": probabilities, "embeddings": real_output},
           scaffold_fn=scaffold_fn)
     return output_spec
 
@@ -951,6 +951,7 @@ def main(_):
     result = estimator.predict(input_fn=predict_input_fn)
 
     output_predict_file = os.path.join(FLAGS.output_dir, "test_results.csv")
+    output_predict_file_embeddings = os.path.join(FLAGS.output_dir, "test_results_embeddings.csv")
     with tf.gfile.GFile(output_predict_file, "w") as writer:
       num_written_lines = 0
       tf.logging.info("***** Predict results *****")
@@ -964,7 +965,19 @@ def main(_):
             for class_probability in probabilities) + "\n"
         writer.write(output_line)
         num_written_lines += 1
-    assert num_written_lines == num_actual_predict_examples
+    with tf.gfile.GFile(output_predict_file_embeddings, "w") as writer:
+      tf.logging.info("***** Predict results *****")
+      tf.logging.info(result)
+      for (i, prediction) in enumerate(result):
+        probabilities = prediction["embeddings"]
+        if i >= num_actual_predict_examples:
+          break
+        output_line = ",".join(
+            str(class_probability)
+            for class_probability in probabilities) + "\n"
+        writer.write(output_line)
+        num_written_lines += 1
+    assert num_written_lines == 1 * num_actual_predict_examples
 
 
 if __name__ == "__main__":
