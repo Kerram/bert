@@ -196,7 +196,7 @@ class LongestTokenizer(object):
         start = end
 
       if is_bad:
-        print("ALAARM ", token)
+        #print("ALAARM ", token)
         output_tokens.append(self.unk_token)
       else:
         output_tokens.extend(sub_tokens)
