@@ -51,7 +51,7 @@ flags.DEFINE_integer(
     "dupe_factor", 2,
     "Number of times to duplicate the input data (with different masks).")
 
-flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
+flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
 
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
@@ -276,7 +276,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
-  gsg_prob = 0.1
+  gsg_prob = 0.0
   masked_lms = []
   masked_subs = []
   output_tokens = list(tokens)
