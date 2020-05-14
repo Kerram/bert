@@ -201,6 +201,8 @@ class DataProcessor(object):
       lines = []
       for line in reader:
         lines.append(line)
+      tf.logging.info(f'READ {len(lines)}')
+      exit(1)
       return lines
 
 
