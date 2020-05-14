@@ -51,7 +51,7 @@ flags.DEFINE_integer(
     "dupe_factor", 2,
     "Number of times to duplicate the input data (with different masks).")
 
-flags.DEFINE_float("masked_lm_prob", 0.05, "Masked LM probability.")
+flags.DEFINE_float("masked_lm_prob", 0.15, "Masked LM probability.")
 
 class TrainingInstance(object):
   """A single training instance (sentence pair)."""
