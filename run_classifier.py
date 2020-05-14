@@ -958,17 +958,15 @@ def main(_):
       num_written_lines = 0
       tf.logging.info("***** Predict results *****")
       tf.logging.info(result)
-      for x in enumerate(result):
-          tf.logging.info(x)
-      # for (i, prediction) in enumerate(result):
-      #   probabilities = prediction["probabilities"]
-      #   if i >= num_actual_predict_examples:
-      #     break
-      #   output_line = "\t".join(
-      #       str(class_probability)
-      #       for class_probability in probabilities) + "\n"
-      #   writer.write(output_line)
-      #   num_written_lines += 1
+      for (i, prediction) in enumerate(result):
+        probabilities = prediction["probabilities"]
+        if i >= num_actual_predict_examples:
+          break
+        output_line = ",".join(
+            str(class_probability)
+            for class_probability in probabilities) + "\n"
+        writer.write(output_line)
+        num_written_lines += 1
     assert num_written_lines == num_actual_predict_examples
 
 
