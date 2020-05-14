@@ -201,8 +201,6 @@ class DataProcessor(object):
       lines = []
       for line in reader:
         lines.append(line)
-      tf.logging.info(f'READ {len(lines)}')
-      exit(1)
       return lines
 
 
@@ -926,6 +924,8 @@ def main(_):
 
   if FLAGS.do_predict:
     predict_examples = processor.get_test_examples(FLAGS.data_dir)
+    tf.logging.info(len(predict_examples))
+    exit(1)
     num_actual_predict_examples = len(predict_examples)
     if FLAGS.use_tpu:
       # TPU requires a fixed batch size for all batches, therefore the number
