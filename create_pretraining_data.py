@@ -269,7 +269,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob,
                                  max_predictions_per_seq, vocab_words, rng):
   """Creates the predictions for the masked LM objective."""
 
-  gsg_prob = 0.1
+  gsg_prob = 0.15
   masked_lms = []
   masked_subs = []
   output_tokens = list(tokens)
