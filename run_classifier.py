@@ -957,7 +957,7 @@ def main(_):
       tf.logging.info("***** Predict results *****")
       tf.logging.info(result)
       for (i, prediction) in enumerate(result):
-        probabilities = prediction["probabilities"]
+        probabilities = prediction["embeddings"]
         if i >= num_actual_predict_examples:
           break
         output_line = ",".join(
@@ -965,18 +965,18 @@ def main(_):
             for class_probability in probabilities) + "\n"
         writer.write(output_line)
         num_written_lines += 1
-    with tf.gfile.GFile(output_predict_file_embeddings, "w") as writer2:
-      tf.logging.info("***** Predict results *****")
-      tf.logging.info(result)
-      for (i, prediction) in enumerate(result):
-        probabilities = prediction["embeddings"]
-        if i >= num_actual_predict_examples:
-          break
-        output_line = ",".join(
-            str(class_probability)
-            for class_probability in probabilities) + "\n"
-        writer2.write(output_line)
-        num_written_lines += 1
+    # with tf.gfile.GFile(output_predict_file_embeddings, "w") as writer2:
+    #   tf.logging.info("***** Predict results *****")
+    #   tf.logging.info(result)
+    #   for (i, prediction) in enumerate(result):
+    #     probabilities = prediction["embeddings"]
+    #     if i >= num_actual_predict_examples:
+    #       break
+    #     output_line = ",".join(
+    #         str(class_probability)
+    #         for class_probability in probabilities) + "\n"
+    #     writer2.write(output_line)
+    #     num_written_lines += 1
 
 
 if __name__ == "__main__":
