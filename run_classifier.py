@@ -588,6 +588,8 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   # If you want to use the token-level output, use model.get_sequence_output()
   # instead.
   output_layer = model.get_pooled_output()
+  print('XXX')
+  exit(1)
 
   hidden_size = output_layer.shape[-1].value
 
