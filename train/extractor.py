@@ -8,7 +8,7 @@ import os
 
 import tensorflow as tf
 
-from deepmath.deephol.train import utils
+import utils
 
 
 class Extractor(object):
@@ -77,6 +77,22 @@ class Extractor(object):
   def get_extractor(self):
     """Returns extractor function based on initialized params."""
 
+    def _convert_to_string(tensor):
+      return tensor
+
+    def _decode_record(features, labels):
+      string_tensors = [
+        'goal', 'goal_asl', 'tactic', 'thms', 'thms_hard_negatives'
+      ]
+
+      for tensor_name in string_tensors:
+        if tensor_name in features:
+          features[tensor_name] = _convert_to_string(features[tensor_name])
+        if tensor_name in labels:
+          labels[tensor_name] = _convert_to_string(labels[tensor_name])
+
+      return features, labels
+
     def extractor(features, labels):
       """Converts 'goal' features and 'thms' labels to list of ids by vocab."""
 
@@ -84,6 +100,8 @@ class Extractor(object):
         raise ValueError('goal feature missing.')
       if 'tac_id' not in labels:
         raise ValueError('tac_id label missing.')
+
+      features, labels = _decode_record(features, labels)
 
       # Tile the related features/labels (goals are tiled after embedding).
       goal_tiling_size = self.params.ratio_neg_examples + 1
