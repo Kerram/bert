@@ -166,8 +166,9 @@ def pairwise_thm_parser(serialized_example, source, params):
   features['thms'] = _choose_one_theorem_at_random(features['thms'])
 
   # thms_hard_negatives: Shuffle, truncate and then pad with '<NULL>'.
-  features['thms_hard_negatives'] = _shuffle_and_truncate_hard_negatives(
-      features['thms_hard_negatives'], params)
+  #features['thms_hard_negatives'] = _shuffle_and_truncate_hard_negatives(
+   #   features['thms_hard_negatives'], params)
+  #TODO change
 
   return features, labels
 
@@ -223,7 +224,6 @@ def get_input_fn(dataset_fn,
       if t.dtype == tf.string:
         t = tf.strings.unicode_decode(t,
                                       input_encoding='UTF-8')
-        t = tf.reshape(t, [])
 
       features[name] = t
 

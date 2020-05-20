@@ -78,7 +78,7 @@ class Extractor(object):
     """Returns extractor function based on initialized params."""
 
     def _convert_to_string(tensor):
-      return tensor
+      return tf.strings.unicode_encode(tensor, output_encoding='UTF-8')
 
     def _decode_record(features, labels):
       string_tensors = [
