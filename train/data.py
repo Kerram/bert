@@ -34,7 +34,7 @@ def tfrecord_dataset_with_source(files, source):
 
 
 def get_train_dataset(params):
-  path = os.path.join(params.dataset_dir, 'train', 'tfexamples*')
+  path = os.path.join(params.dataset_dir, 'train', 'tf*')
   files = tf.gfile.Glob(path)
   if not files:
     raise ValueError('No training files found in %s' % path)
@@ -60,9 +60,9 @@ def get_holparam_dataset(mode, params):
 
   if mode == EVAL:
     if params.eval_dataset_dir:
-      path = os.path.join(params.eval_dataset_dir, 'tfexamples*')
+      path = os.path.join(params.eval_dataset_dir, 'valid*')
     else:
-      path = os.path.join(params.dataset_dir, 'valid', 'tfexamples*')
+      path = os.path.join(params.dataset_dir, 'valid', 'tf*')
     files = tf.gfile.Glob(path)
 
     tf.logging.info('EVAL files: %s.', ' '.join([str(f) for f in files]))
@@ -166,22 +166,20 @@ def pairwise_thm_parser(serialized_example, source, params):
   features['thms'] = _choose_one_theorem_at_random(features['thms'])
 
   # thms_hard_negatives: Shuffle, truncate and then pad with '<NULL>'.
-  #features['thms_hard_negatives'] = _shuffle_and_truncate_hard_negatives(
-   #   features['thms_hard_negatives'], params)
-  #TODO change
+  features['thms_hard_negatives'] = _shuffle_and_truncate_hard_negatives(
+      features['thms_hard_negatives'], params)
 
   return features, labels
 
 
 def get_input_fn(dataset_fn,
                  mode,
-                 deephol_params,
+                 params,
                  shuffle=None,
                  shuffle_queue=None,
                  repeat=None,
                  parser=None,
-                 filt=None,
-                 use_tpu=True):
+                 filt=None):
   """Create a HOL param input function getter.
 
   Args:
@@ -200,7 +198,7 @@ def get_input_fn(dataset_fn,
   """
 
   if shuffle_queue is None:
-    shuffle_queue = deephol_params.shuffle_queue
+    shuffle_queue = params.shuffle_queue
   if shuffle is None:
     shuffle = mode == TRAIN
   if repeat is None:
@@ -213,41 +211,10 @@ def get_input_fn(dataset_fn,
     tf.logging.info('PASSED IN parser is None')
     parser = pairwise_thm_parser
 
-  def _encode_record(features, labels):
-    # Cast all incompatible types (on TPU) to compatible ones.
-    for name in list(features.keys()):
-      t = features[name]
-
-      if t.dtype == tf.int64:
-        t = tf.to_int32(t)
-
-      if t.dtype == tf.string:
-        t = tf.strings.unicode_decode(t,
-                                      input_encoding='UTF-8')
-
-      features[name] = t
-
-    for name in list(labels.keys()):
-      t = labels[name]
-
-      if t.dtype == tf.int64:
-        t = tf.to_int32(t)
-
-      if t.dtype == tf.string:
-        t = tf.io.decode_raw(t, tf.uint8)
-        t = tf.reshape(t, [])
-        t = tf.cast(t, tf.int32)
-
-      labels[name] = t
-
-    return features, labels
-
-  def input_fn(params):
+  def input_fn():
     """Input Function for estimator."""
-    deephol_params['batch_size'] = params['batch_size']
-
-    ds = dataset_fn(deephol_params)
-    if deephol_params.setdefault('cache', False):
+    ds = dataset_fn(params)
+    if params.setdefault('cache', False):
       ds = ds.cache()
     if repeat is not None:
       ds = ds.repeat(repeat)
@@ -256,27 +223,14 @@ def get_input_fn(dataset_fn,
     if shuffle:
       ds = ds.shuffle(shuffle_queue)
 
-    ds = ds.map(functools.partial(parser, params=deephol_params))
+    ds = ds.map(functools.partial(parser, params=params))
 
     if filt is not None:
       ds = ds.filter(filt)
 
-    if use_tpu:
-      drop = True
-    else:
-      drop = mode == EVAL
+    drop = mode == EVAL
 
-    ds = ds.apply(
-      tf.data.experimental.map_and_batch(
-        lambda features, labels: _encode_record(features, labels),
-        batch_size=params['batch_size'],
-        drop_remainder=drop,
-      )
-    )
-
-    if use_tpu:
-      return ds
-
+    ds = ds.batch(params['batch_size'], drop_remainder=drop)
     return ds.make_one_shot_iterator().get_next()
 
   return input_fn

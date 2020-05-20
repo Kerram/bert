@@ -65,6 +65,10 @@ flags.DEFINE_bool(
     "do_predict", False, "Whether to run the model in inference mode on the test set."
 )
 
+flags.DEFINE_bool(
+    "do_export", False, "Whether to export the model."
+)
+
 flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
@@ -701,53 +705,72 @@ def reduce_mean_weighted(values, weights):
     )
 
 
-def update_features_using_deephol(features, tokenizer, max_seq_length):
-    def create_int_feature(values):
-        f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
-        return f
+def _pad_up_to(value, size, axis, name=None):
+  """Pad a tensor with zeros on the right along axis to a least the given size.
+
+  Args:
+    value: Tensor to pad.
+    size: Minimum size along axis.
+    axis: A nonnegative integer.
+    name: Optional name for this operation.
+
+  Returns:
+    Padded value.
+  """
+  with tf.name_scope(name, 'pad_up_to') as name:
+    value = tf.convert_to_tensor(value, name='value')
+    axis = tf.convert_to_tensor(axis, name='axis')
+    need = tf.nn.relu(size - tf.shape(value)[axis])
+    ids = tf.stack([tf.stack([axis, 1])])
+    paddings = tf.sparse_to_dense(ids, tf.stack([tf.rank(value), 2]), need)
+    padded = tf.pad(value, paddings, name=name)
+    # Fix shape inference
+    axis = tf.contrib.util.constant_value(axis)
+    shape = value.get_shape()
+    if axis is not None and shape.ndims is not None:
+      shape = shape.as_list()
+      shape[axis] = None
+      padded.set_shape(shape)
+    return padded
+
+
+def to_mask(n):
+  return tf.cond(tf.equal(n, tf.constant(0)), lambda: tf.constant(0), lambda: tf.constant(1))
+
+
+def update_features_using_deephol(features, max_seq_length):
+    tensor_tokenizer = tokenization.TensorWorkSplitter(vocab_file=FLAGS.vocab_file)
 
     with tf.variable_scope('extractor'):
-        goal = tf.placeholder(dtype=tf.string, shape=[None])
-        thm = tf.placeholder(dtype=tf.string, shape=[None])
+        goal_str = tf.Variable([''], dtype=tf.string)
+        thm_str = tf.Variable([''], dtype=tf.string)
 
-        tf.add_to_collection('goal_string', goal)
-        tf.add_to_collection('thm_string', thm)
+        tf.logging.info("********** Tokenization of goal in Holist ********")
+        tf.add_to_collection('goal_string', goal_str)
 
-        if goal.op.type != 'Placeholder':
-            goal_str = tokenization.convert_to_unicode(goal)
+        goal = tensor_tokenizer.tokenize(goal_str, max_seq_length)
 
-            g_tokens = tokenizer.tokenize(goal_str)
+        goal = _pad_up_to(goal, max_seq_length, 1)
+        goal_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), goal)
+        goal_segment_ids = tf.fill(modeling.get_shape_list(goal, expected_rank=2), 0)
 
-            if len(g_tokens) > max_seq_length - 2:
-                g_tokens = g_tokens[0: (max_seq_length - 2)]
+        features['goal_input_ids'] = goal
+        features['goal_input_mask'] = goal_input_mask
+        features['goal_segment_ids'] = goal_segment_ids
 
-            (_, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(
-                g_tokens, tokenizer, max_seq_length
-            )
 
-            features['goal_input_ids'] = create_int_feature(goal_input_ids)
-            features['goal_input_mask'] = create_int_feature(goal_input_mask)
-            features['goal_segment_ids'] = create_int_feature(goal_segment_ids)
-            features['is_negative'] = create_int_feature([1])  # Maybe wrong <- 1 means False
-            features['is_real_example'] = create_int_feature([int(True)])
+        tf.logging.info("********** Tokenization of theorem in Holist ********")
+        tf.add_to_collection('thm_string', thm_str)
 
-        if thm.op.type != 'Placeholder':
-            thm_str = tokenization.convert_to_unicode(thm)
+        thm = tensor_tokenizer.tokenize(thm_str, max_seq_length)
 
-            t_tokens = tokenizer.tokenize(thm_str)
+        thm = _pad_up_to(thm, max_seq_length, 1)
+        thm_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), thm)
+        thm_segment_ids = tf.fill(modeling.get_shape_list(thm, expected_rank=2), 0)
 
-            if len(t_tokens) > max_seq_length - 2:
-                t_tokens = t_tokens[0: (max_seq_length - 2)]
-
-            (_, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(
-                t_tokens, tokenizer, max_seq_length
-            )
-
-            features['thm_input_ids'] = create_int_feature(thm_input_ids)
-            features['thm_input_mask'] = create_int_feature(thm_input_mask)
-            features['thm_segment_ids'] = create_int_feature(thm_segment_ids)
-            features['is_negative'] = create_int_feature([1])  # Maybe wrong <- 1 means False
-            features['is_real_example'] = create_int_feature([int(True)])
+        features['thm_input_ids'] = thm
+        features['thm_input_mask'] = thm_input_mask
+        features['thm_segment_ids'] = thm_segment_ids
 
 
 def model_fn_builder(
@@ -759,7 +782,6 @@ def model_fn_builder(
     num_warmup_steps,
     use_tpu,
     use_one_hot_embeddings,
-    tokenizer,
     max_seq_length
 ):
     def model_fn(features, labels, mode, params):
@@ -768,7 +790,8 @@ def model_fn_builder(
         for name in sorted(features.keys()):
             tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
 
-        update_features_using_deephol(features, tokenizer, max_seq_length)
+        if not use_tpu:  # HOList does not use TPU.
+            update_features_using_deephol(features, max_seq_length)
 
         tf.logging.info("*** Features after deephol ***")
         for name in sorted(features.keys()):
@@ -1001,9 +1024,9 @@ def main(_):
     csv.field_size_limit(sys.maxsize)
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:
+    if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict and not FLAGS.do_export:
         raise ValueError(
-            "At least one of `do_train`, `do_eval` or `do_predict' must be True."
+            "At least one of `do_train`, `do_eval`, `do_predict' or `do_predict` must be True."
         )
 
     bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
@@ -1063,7 +1086,6 @@ def main(_):
         num_warmup_steps=num_warmup_steps,
         use_tpu=FLAGS.use_tpu,
         use_one_hot_embeddings=FLAGS.use_tpu,
-        tokenizer=tokenizer,
         max_seq_length=FLAGS.max_seq_length,
     )
 
@@ -1155,28 +1177,6 @@ def main(_):
                 tf.logging.info("  %s = %s", key, str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
-        feature_spec = {
-            "goal_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "goal_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "goal_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
-            "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
-            "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
-        }
-        label_spec = {}
-        build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
-        input_receiver_fn = build_input(feature_spec, label_spec)
-
-        # Export final model
-        tf.logging.info('*****  Starting to export model.   *****')
-        estimator._export_to_tpu = False
-        estimator.export_savedmodel(
-            export_dir_base=os.path.join(FLAGS.output_dir, 'export/exporter'),
-            serving_input_receiver_fn=input_receiver_fn)
-
     if FLAGS.do_predict:
         predict_examples = processor.get_test_examples(FLAGS.data_dir)
         num_actual_predict_examples = len(predict_examples)
@@ -1234,6 +1234,29 @@ def main(_):
                 writer.write(output_line)
                 num_written_lines += 1
         assert num_written_lines == num_actual_predict_examples
+
+    if FLAGS.do_export:
+        feature_spec = {
+            "goal_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "goal_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "goal_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "thm_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "thm_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "thm_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
+            "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
+            "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
+        }
+        label_spec = {}
+        build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
+        input_receiver_fn = build_input(feature_spec, label_spec)
+
+        # Export final model
+        tf.logging.info('*****  Starting to export model.   *****')
+        estimator._export_to_tpu = False
+        estimator.export_savedmodel(
+            export_dir_base=os.path.join(FLAGS.output_dir, 'export/exporter'),
+            serving_input_receiver_fn=input_receiver_fn)
 
 
 if __name__ == "__main__":

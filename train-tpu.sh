@@ -1,1 +1,1 @@
-sudo python3 train/experiments.py --num_train_epochs=3 --dataset_dir=../../deephol-data/deepmath/deephol/proofs/human/ --model_dir=gs://zpp-bucket-1920/tpu-fine-tune/bert_model --do_train=True --do_eval=True --do_predict=False --use_tpu=True --tpu_name=tpu-deephol-train --gcp_project=zpp-mim-1920 --tpu_zone=us-central1-f --num_tpu_cores 8 --save_checkpoints_steps 10000
+sudo python3 train/experiments.py --dataset_dir=../../deephol-data/deepmath/deephol/proofs/human/ --model_dir=gs://zpp-bucket-1920/tpu-fine-tune/bert_model_tmp

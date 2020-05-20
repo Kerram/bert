@@ -77,22 +77,6 @@ class Extractor(object):
   def get_extractor(self):
     """Returns extractor function based on initialized params."""
 
-    def _convert_to_string(tensor):
-      return tf.strings.unicode_encode(tensor, output_encoding='UTF-8')
-
-    def _decode_record(features, labels):
-      string_tensors = [
-        'goal', 'goal_asl', 'tactic', 'thms', 'thms_hard_negatives'
-      ]
-
-      for tensor_name in string_tensors:
-        if tensor_name in features:
-          features[tensor_name] = _convert_to_string(features[tensor_name])
-        if tensor_name in labels:
-          labels[tensor_name] = _convert_to_string(labels[tensor_name])
-
-      return features, labels
-
     def extractor(features, labels):
       """Converts 'goal' features and 'thms' labels to list of ids by vocab."""
 
@@ -100,8 +84,6 @@ class Extractor(object):
         raise ValueError('goal feature missing.')
       if 'tac_id' not in labels:
         raise ValueError('tac_id label missing.')
-
-      features, labels = _decode_record(features, labels)
 
       # Tile the related features/labels (goals are tiled after embedding).
       goal_tiling_size = self.params.ratio_neg_examples + 1
@@ -135,6 +117,11 @@ class Extractor(object):
         del labels['thms']
 
       # tokenize 'goal' and 'thms'.
+      features['goal']= tf.Print(features['goal'], [tf.shape(features['goal'])], "NET SHAPE: ", summarize=-1)
+      features['goal']= tf.Print(features['goal'], [features['goal']], "NET TENSOR: ", summarize=-1)
+      features['goal'] = tf.Print(features['goal'], [features['goal'].dtype], "NET TENSOR: ", summarize=-1)
+
+
       tf.add_to_collection('goal_string', features['goal'])
       features['goal_ids'] = self.tokenize(features['goal'], self.goal_table)
       del features['goal']

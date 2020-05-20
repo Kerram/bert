@@ -24,6 +24,7 @@ import unicodedata
 import six
 import tensorflow as tf
 
+
 def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
   """Checks whether the casing config is consistent with the checkpoint name."""
 
@@ -207,3 +208,45 @@ class LongestTokenizer(object):
 
   def convert_ids_to_tokens(self, ids):
     return convert_by_vocab(self.inv_vocab, ids)
+
+
+class TensorWorkSplitter(object):
+  """Extract terms/thms and tokenize based on vocab.
+  Code mostly from deephol train -- extractor.py.
+
+  Attributes:
+    vocab_table: Lookup table for goal vocab embeddings.
+  """
+
+  def __init__(self, vocab_file):
+    # Create vocab lookup tables from existing vocab id lists.
+    with tf.variable_scope('extractor'):
+      self.vocab_table = self._vocab_table_from_file(vocab_file)
+
+  def _vocab_table_from_file(self, filename, reverse=False):
+    with tf.gfile.Open(filename, 'r') as f:
+      keys = [s.strip() for s in f.readlines()]
+      values = tf.range(len(keys), dtype=tf.int64)
+      if not reverse:
+        init = tf.contrib.lookup.KeyValueTensorInitializer(keys, values)
+        return tf.contrib.lookup.HashTable(init, 1)
+      else:
+        init = tf.contrib.lookup.KeyValueTensorInitializer(values, keys)
+        return tf.contrib.lookup.HashTable(init, '')
+
+  def tokenize(self, tm, max_seq_length):
+    """Tokenizes tensor string according to lookup table."""
+    tm = tf.strings.join(['[CLS] ', tf.strings.strip(tm), ' [SEP]'])
+    # Remove parentheses - they can be recovered for S-expressions.
+    #tm = tf.strings.regex_replace(tm, r'\(', ' ')
+    #tm = tf.strings.regex_replace(tm, r'\)', ' ')
+    words = tf.strings.split(tm)
+    # Truncate long terms.
+    words = tf.sparse.slice(words, [0, 0],
+                            [tf.shape(words)[0], max_seq_length])
+
+    word_values = words.values
+    id_values = tf.to_int32(self.vocab_table.lookup(word_values))
+    ids = tf.SparseTensor(words.indices, id_values, words.dense_shape)
+    ids = tf.sparse_tensor_to_dense(ids)
+    return ids
