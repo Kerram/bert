@@ -506,6 +506,8 @@ def create_encoding(
 
         output = model.get_pooled_output()
 
+        tf.add_to_collection(name + '_net', output)
+
         return output
 
 
@@ -513,41 +515,41 @@ def tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels):
     hidden_size = goal_net.shape[-1].value
 
     # Adding 3 dense layers with dropout like in deephol
-    with tf.variable_scope("loss"):
-        if is_training:
-            goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
-        goal_net = tf.layers.dense(
-            goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense1"
-        )
+    # with tf.variable_scope("loss"):
+    if is_training:
+        goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
+    goal_net = tf.layers.dense(
+        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense1"
+    )
 
-        if is_training:
-            goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
-        goal_net = tf.layers.dense(
-            goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense2"
-        )
+    if is_training:
+        goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
+    goal_net = tf.layers.dense(
+        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense2"
+    )
 
-        if is_training:
-            goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
-        tac_logits = tf.layers.dense(
-            goal_net, num_tac_labels, activation=tf.nn.relu, name="tac_dense3"
-        )
+    if is_training:
+        goal_net = tf.nn.dropout(goal_net, keep_prob=0.7)
+    tac_logits = tf.layers.dense(
+        goal_net, num_tac_labels, activation=tf.nn.relu, name="tac_dense3"
+    )
 
-        tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
-        log_probs = tf.nn.log_softmax(tac_logits, axis=-1)
+    tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
+    log_probs = tf.nn.log_softmax(tac_logits, axis=-1)
 
-        one_hot_labels = tf.one_hot(tac_labels, depth=num_tac_labels, dtype=tf.float32)
+    one_hot_labels = tf.one_hot(tac_labels, depth=num_tac_labels, dtype=tf.float32)
 
-        tac_per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
-        tac_loss = tf.reduce_mean(tac_per_example_loss)
+    tac_per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
+    tac_loss = tf.reduce_mean(tac_per_example_loss)
 
-        tf.logging.info("tac_logits.shape = %s" % (tac_logits.shape))
-        tf.logging.info(
-            "tac_per_example_loss.shape = %s" % (tac_per_example_loss.shape)
-        )
-        # tac_per_example_loss = tf.print(tac_per_example_loss, [tf.shape(tac_per_example_loss)], "tac_per_example_loss_shape: ", summarize =-1)
-        # tac_logits = tf.print(tac_logits, [tf.shape(tac_logits)], "tac_logits_shape: ", summarize =-1)
+    tf.logging.info("tac_logits.shape = %s" % (tac_logits.shape))
+    tf.logging.info(
+        "tac_per_example_loss.shape = %s" % (tac_per_example_loss.shape)
+    )
+    # tac_per_example_loss = tf.print(tac_per_example_loss, [tf.shape(tac_per_example_loss)], "tac_per_example_loss_shape: ", summarize =-1)
+    # tac_logits = tf.print(tac_logits, [tf.shape(tac_logits)], "tac_logits_shape: ", summarize =-1)
 
-        return (tac_loss, tac_per_example_loss, tac_logits, tac_probabilities)
+    return (tac_loss, tac_per_example_loss, tac_logits, tac_probabilities)
 
 
 def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_labels):
@@ -557,51 +559,53 @@ def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_
     net = tf.concat([goal_net, thm_net, goal_net * thm_net], -1)
 
     # Adding 3 dense layers with dropout like in deephol
-    with tf.variable_scope("loss"):
-        if is_training:
-            net = tf.nn.dropout(net, keep_prob=0.7)
-        net = tf.layers.dense(
-            net, hidden_size, activation=tf.nn.relu, name="par_dense1"
-        )
+    # with tf.variable_scope("loss"):
+    if is_training:
+        net = tf.nn.dropout(net, keep_prob=0.7)
+    net = tf.layers.dense(
+        net, hidden_size, activation=tf.nn.relu, name="par_dense1"
+    )
 
-        if is_training:
-            net = tf.nn.dropout(net, keep_prob=0.7)
-        net = tf.layers.dense(
-            net, hidden_size, activation=tf.nn.relu, name="par_dense2"
-        )
+    if is_training:
+        net = tf.nn.dropout(net, keep_prob=0.7)
+    net = tf.layers.dense(
+        net, hidden_size, activation=tf.nn.relu, name="par_dense2"
+    )
 
-        if is_training:
-            net = tf.nn.dropout(net, keep_prob=0.7)
-        net = tf.layers.dense(
-            net, hidden_size, activation=tf.nn.relu, name="par_dense3"
-        )
+    if is_training:
+        net = tf.nn.dropout(net, keep_prob=0.7)
+    net = tf.layers.dense(
+        net, hidden_size, activation=tf.nn.relu, name="par_dense3"
+    )
 
-        # [batch_size, 1]
-        par_logits = tf.layers.dense(net, 1, activation=None)
+    # [batch_size, 1]
+    par_logits = tf.layers.dense(net, 1, activation=None)
 
-        # [batch_size, 1]
-        par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
-            labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),
-            logits=par_logits,
-        )
+    tf.add_to_collection('pairwise_score', par_logits)
 
-        # [batch_size]
-        par_logits = tf.squeeze(par_logits, [1])
-        par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
+    # [batch_size, 1]
+    par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),
+        logits=par_logits,
+    )
 
-        #  sum, not mean, as opposed to tactic classifier
-        #  a bit strange but they did so in deephol
-        #  presumably it makes the code less scalable for batch_size
-        par_loss = tf.reduce_sum(par_per_example_loss)
+    # [batch_size]
+    par_logits = tf.squeeze(par_logits, [1])
+    par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
 
-        tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
-        tf.logging.info(
-            "par_per_example_loss.shape = %s" % (par_per_example_loss.shape)
-        )
-        # par_logits = tf.print(par_logits, [tf.shape(par_logits)], "par_logits_shape: ", summarize =-1)
-        # par_per_example_loss = tf.print(par_per_example_loss, [tf.shape(par_per_example_loss)], "par_per_example_loss_shape: ", summarize =-1)
+    #  sum, not mean, as opposed to tactic classifier
+    #  a bit strange but they did so in deephol
+    #  presumably it makes the code less scalable for batch_size
+    par_loss = tf.reduce_sum(par_per_example_loss)
 
-        return (par_loss, par_per_example_loss, par_logits)
+    tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
+    tf.logging.info(
+        "par_per_example_loss.shape = %s" % (par_per_example_loss.shape)
+    )
+    # par_logits = tf.print(par_logits, [tf.shape(par_logits)], "par_logits_shape: ", summarize =-1)
+    # par_per_example_loss = tf.print(par_per_example_loss, [tf.shape(par_per_example_loss)], "par_per_example_loss_shape: ", summarize =-1)
+
+    return (par_loss, par_per_example_loss, par_logits)
 
 
 def create_model(
@@ -619,47 +623,51 @@ def create_model(
     is_training,
 ):
 
-    with tf.variable_scope("pairwise_encoder"):
-        goal_net = create_encoding(
-            "goal",
-            is_training,
-            bert_config,
-            goal_input_ids,
-            goal_input_mask,
-            goal_segment_ids,
-            use_one_hot_embeddings,
-        )
-        thm_net = create_encoding(
-            "thm",
-            is_training,
-            bert_config,
-            thm_input_ids,
-            thm_input_mask,
-            thm_segment_ids,
-            use_one_hot_embeddings,
-        )
+    with tf.variable_scope("encoder"):
+        with tf.variable_scope("dilated_cnn_pairwise_encoder"):
+            goal_net = create_encoding(
+                "goal",
+                is_training,
+                bert_config,
+                goal_input_ids,
+                goal_input_mask,
+                goal_segment_ids,
+                use_one_hot_embeddings,
+            )
+            thm_net = create_encoding(
+                "thm",
+                is_training,
+                bert_config,
+                thm_input_ids,
+                thm_input_mask,
+                thm_segment_ids,
+                use_one_hot_embeddings,
+            )
 
+    with tf.variable_scope("classifier"):
         (
             tac_loss,
             tac_per_example_loss,
             tac_logits,
             tac_probabilities,
         ) = tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels)
+
+    with tf.variable_scope("pairwise_scorer"):
         (par_loss, par_per_example_loss, par_logits) = pairwise_classifier(
             goal_net, thm_net, is_training, is_negative_labels, tac_labels
         )
 
-        total_loss = par_loss + tac_loss
+    total_loss = par_loss + tac_loss
 
-        return (
-            total_loss,
-            par_per_example_loss,
-            tac_per_example_loss,
-            tac_logits,
-            tac_probabilities,
-            par_loss,
-            par_logits,
-        )
+    return (
+        total_loss,
+        par_per_example_loss,
+        tac_per_example_loss,
+        tac_logits,
+        tac_probabilities,
+        par_loss,
+        par_logits,
+    )
 
 
 # Kuba's hack
@@ -693,6 +701,55 @@ def reduce_mean_weighted(values, weights):
     )
 
 
+def update_features_using_deephol(features, tokenizer, max_seq_length):
+    def create_int_feature(values):
+        f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
+        return f
+
+    with tf.variable_scope('extractor'):
+        goal = tf.placeholder(dtype=tf.string, shape=[None])
+        thm = tf.placeholder(dtype=tf.string, shape=[None])
+
+        tf.add_to_collection('goal_string', goal)
+        tf.add_to_collection('thm_string', thm)
+
+        if goal.op.type != 'Placeholder':
+            goal_str = tokenization.convert_to_unicode(goal)
+
+            g_tokens = tokenizer.tokenize(goal_str)
+
+            if len(g_tokens) > max_seq_length - 2:
+                g_tokens = g_tokens[0: (max_seq_length - 2)]
+
+            (_, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(
+                g_tokens, tokenizer, max_seq_length
+            )
+
+            features['goal_input_ids'] = create_int_feature(goal_input_ids)
+            features['goal_input_mask'] = create_int_feature(goal_input_mask)
+            features['goal_segment_ids'] = create_int_feature(goal_segment_ids)
+            features['is_negative'] = create_int_feature([1])  # Maybe wrong <- 1 means False
+            features['is_real_example'] = create_int_feature([int(True)])
+
+        if thm.op.type != 'Placeholder':
+            thm_str = tokenization.convert_to_unicode(thm)
+
+            t_tokens = tokenizer.tokenize(thm_str)
+
+            if len(t_tokens) > max_seq_length - 2:
+                t_tokens = t_tokens[0: (max_seq_length - 2)]
+
+            (_, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(
+                t_tokens, tokenizer, max_seq_length
+            )
+
+            features['thm_input_ids'] = create_int_feature(thm_input_ids)
+            features['thm_input_mask'] = create_int_feature(thm_input_mask)
+            features['thm_segment_ids'] = create_int_feature(thm_segment_ids)
+            features['is_negative'] = create_int_feature([1])  # Maybe wrong <- 1 means False
+            features['is_real_example'] = create_int_feature([int(True)])
+
+
 def model_fn_builder(
     bert_config,
     num_tac_labels,
@@ -702,10 +759,18 @@ def model_fn_builder(
     num_warmup_steps,
     use_tpu,
     use_one_hot_embeddings,
+    tokenizer,
+    max_seq_length
 ):
     def model_fn(features, labels, mode, params):
 
         tf.logging.info("*** Features ***")
+        for name in sorted(features.keys()):
+            tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
+
+        update_features_using_deephol(features, tokenizer, max_seq_length)
+
+        tf.logging.info("*** Features after deephol ***")
         for name in sorted(features.keys()):
             tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
 
@@ -764,16 +829,16 @@ def model_fn_builder(
                 def tpu_scaffold():
                     tf.train.warm_start(
                         init_checkpoint,
-                        "pairwise_encoder/thm/bert*",
+                        "encoder/dilated_cnn_pairwise_encoder/thm/bert*",
                         None,
-                        Remover(["pairwise_encoder/thm/"]),
+                        Remover(["encoder/dilated_cnn_pairwise_encoder/thm/"]),
                     )
 
                     tf.train.warm_start(
                         init_checkpoint,
-                        "pairwise_encoder/goal/bert*",
+                        "encoder/dilated_cnn_pairwise_encoder/goal/bert*",
                         None,
-                        Remover(["pairwise_encoder/goal/"]),
+                        Remover(["encoder/dilated_cnn_pairwise_encoder/goal/"]),
                     )
 
                     return tf.train.Scaffold()
@@ -783,16 +848,16 @@ def model_fn_builder(
             else:
                 tf.train.warm_start(
                     init_checkpoint,
-                    "pairwise_encoder/thm/bert*",
+                    "encoder/dilated_cnn_pairwise_encoder/thm/bert*",
                     None,
-                    Remover(["pairwise_encoder/thm/"]),
+                    Remover(["encoder/dilated_cnn_pairwise_encoder/thm/"]),
                 )
 
                 tf.train.warm_start(
                     init_checkpoint,
-                    "pairwise_encoder/goal/bert*",
+                    "encoder/dilated_cnn_pairwise_encoder/goal/bert*",
                     None,
-                    Remover(["pairwise_encoder/goal/"]),
+                    Remover(["encoder/dilated_cnn_pairwise_encoder/goal/"]),
                 )
 
         # Ten komunikat się nie będzie do końca zgadzał
@@ -998,6 +1063,8 @@ def main(_):
         num_warmup_steps=num_warmup_steps,
         use_tpu=FLAGS.use_tpu,
         use_one_hot_embeddings=FLAGS.use_tpu,
+        tokenizer=tokenizer,
+        max_seq_length=FLAGS.max_seq_length,
     )
 
     estimator = tf.contrib.tpu.TPUEstimator(
