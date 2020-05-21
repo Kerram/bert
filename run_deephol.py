@@ -170,6 +170,8 @@ class InputFeatures(object):
         thm_segment_ids,
         tac_id,
         is_negative,
+        goal_str,
+        thm_str,
         is_real_example=True,
     ):
 
@@ -182,6 +184,8 @@ class InputFeatures(object):
         self.tac_id = tac_id
         self.is_negative = is_negative
         self.is_real_example = is_real_example
+        self.goal_str = goal_str
+        self.thm_str = thm_str
 
 
 class DataProcessor(object):
@@ -258,6 +262,7 @@ class DeepholProcessor(DataProcessor):
                 thm = tokenization.convert_to_unicode(line[1])
                 is_negative = "True"
                 label = "0"
+                tac_id = "0" # TODO change
             else:
                 goal = tokenization.convert_to_unicode(line[0])
                 thm = tokenization.convert_to_unicode(line[1])
@@ -315,6 +320,8 @@ def convert_single_example(
             tac_id=0,
             is_negative=True,
             is_real_example=False,
+            goal_str="",
+            thm_str="",
         )
 
     tac_label_map = {}
@@ -391,6 +398,8 @@ def convert_single_example(
         tac_id=tac_id,
         is_negative=is_negative,
         is_real_example=True,
+        goal_str=example.goal,
+        thm_str=example.thm,
     )
 
     return feature
@@ -430,6 +439,10 @@ def file_based_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
+        features["goal_str"] = tf.train.Feature(bytes_list=tf.train.BytesList(
+            value=[bytes(feature.goal_str, encoding="utf-8")]))
+        features['thm_str'] = tf.train.Feature(bytes_list=tf.train.BytesList(
+            value=[bytes(feature.thm_str, encoding="utf-8")]))
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
@@ -449,6 +462,8 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
+        'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
+        'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
     }
 
     def _decode_record(record, name_to_features):
@@ -518,6 +533,8 @@ def create_encoding(
 def tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels):
     hidden_size = goal_net.shape[-1].value
 
+    tf.add_to_collection('tactic_net', goal_net)
+
     # Adding 3 dense layers with dropout like in deephol
     # with tf.variable_scope("loss"):
     if is_training:
@@ -537,6 +554,8 @@ def tactic_classifier(goal_net, is_training, tac_labels, num_tac_labels):
     tac_logits = tf.layers.dense(
         goal_net, num_tac_labels, activation=tf.nn.relu, name="tac_dense3"
     )
+
+    tf.add_to_collection('tactic_logits', tac_logits)
 
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
     log_probs = tf.nn.log_softmax(tac_logits, axis=-1)
@@ -742,13 +761,10 @@ def update_features_using_deephol(features, max_seq_length):
     tensor_tokenizer = tokenization.TensorWorkSplitter(vocab_file=FLAGS.vocab_file)
 
     with tf.variable_scope('extractor'):
-        goal_str = tf.Variable([''], dtype=tf.string)
-        thm_str = tf.Variable([''], dtype=tf.string)
-
         tf.logging.info("********** Tokenization of goal in Holist ********")
-        tf.add_to_collection('goal_string', goal_str)
+        tf.add_to_collection('goal_string', features['goal_str'])
 
-        goal = tensor_tokenizer.tokenize(goal_str, max_seq_length)
+        goal = tensor_tokenizer.tokenize(features['goal_str'], max_seq_length)
 
         goal = _pad_up_to(goal, max_seq_length, 1)
         goal_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), goal)
@@ -760,9 +776,9 @@ def update_features_using_deephol(features, max_seq_length):
 
 
         tf.logging.info("********** Tokenization of theorem in Holist ********")
-        tf.add_to_collection('thm_string', thm_str)
+        tf.add_to_collection('thm_string', features['thm_str'])
 
-        thm = tensor_tokenizer.tokenize(thm_str, max_seq_length)
+        thm = tensor_tokenizer.tokenize(features['thm_str'], max_seq_length)
 
         thm = _pad_up_to(thm, max_seq_length, 1)
         thm_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), thm)
@@ -871,17 +887,15 @@ def model_fn_builder(
             else:
                 tf.train.warm_start(
                     init_checkpoint,
-                    "encoder/dilated_cnn_pairwise_encoder/thm/bert*",
-                    None,
-                    Remover(["encoder/dilated_cnn_pairwise_encoder/thm/"]),
-                )
+                    "encoder/*")
 
                 tf.train.warm_start(
                     init_checkpoint,
-                    "encoder/dilated_cnn_pairwise_encoder/goal/bert*",
-                    None,
-                    Remover(["encoder/dilated_cnn_pairwise_encoder/goal/"]),
-                )
+                    "classifier/*")
+
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "pairwise_scorer/*")
 
         # Ten komunikat się nie będzie do końca zgadzał
         tf.logging.info("**** Trainable Variables ****")
@@ -1246,13 +1260,48 @@ def main(_):
             "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
+            "goal_str": tf.placeholder(dtype=tf.string, shape=[None]),
+            "thm_str": tf.placeholder(dtype=tf.string, shape=[None]),
         }
         label_spec = {}
         build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
         input_receiver_fn = build_input(feature_spec, label_spec)
 
+        predict_examples = processor.get_test_examples(FLAGS.data_dir)
+        num_actual_predict_examples = len(predict_examples)
+
+        predict_file = os.path.join(FLAGS.output_dir, "predict.tf_record")
+        file_based_convert_examples_to_features(
+            predict_examples,
+            tac_labels,
+            is_negative_labels,
+            FLAGS.max_seq_length,
+            tokenizer,
+            predict_file,
+        )
+
+        predict_drop_remainder = True if FLAGS.use_tpu else False
+        predict_input_fn = file_based_input_fn_builder(
+            input_file=predict_file,
+            seq_length=FLAGS.max_seq_length,
+            is_training=False,
+            drop_remainder=predict_drop_remainder,
+        )
+
         # Export final model
         tf.logging.info('*****  Starting to export model.   *****')
+        save_hook = tf.train.CheckpointSaverHook(FLAGS.output_dir, save_secs=1)
+        result = estimator.predict(input_fn=predict_input_fn, hooks=[save_hook])
+        # now you will get graph.pbtxt which is used in SavedModel, and then
+        output_predict_file = os.path.join(FLAGS.output_dir, "test_results.tsv")
+        with tf.gfile.GFile(output_predict_file, "w") as writer:
+            num_written_lines = 0
+            tf.logging.info("***** Predict results *****")
+            for (i, prediction) in enumerate(result):
+                num_written_lines += 1
+        assert num_written_lines == num_actual_predict_examples
+
+
         estimator._export_to_tpu = False
         estimator.export_savedmodel(
             export_dir_base=os.path.join(FLAGS.output_dir, 'export/exporter'),

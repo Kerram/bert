@@ -237,16 +237,19 @@ class TensorWorkSplitter(object):
   def tokenize(self, tm, max_seq_length):
     """Tokenizes tensor string according to lookup table."""
     tm = tf.strings.join(['[CLS] ', tf.strings.strip(tm), ' [SEP]'])
+    tf.logging.info("  name = %s, shape = %s" % ("tm", tm.shape))
     # Remove parentheses - they can be recovered for S-expressions.
     #tm = tf.strings.regex_replace(tm, r'\(', ' ')
     #tm = tf.strings.regex_replace(tm, r'\)', ' ')
     words = tf.strings.split(tm)
+    tf.logging.info("  name = %s, shape = %s" % ("words", words.shape))
     # Truncate long terms.
     words = tf.sparse.slice(words, [0, 0],
                             [tf.shape(words)[0], max_seq_length])
 
     word_values = words.values
     id_values = tf.to_int32(self.vocab_table.lookup(word_values))
+    tf.logging.info("  name = %s, shape = %s" % ("id_values", id_values.shape))
     ids = tf.SparseTensor(words.indices, id_values, words.dense_shape)
     ids = tf.sparse_tensor_to_dense(ids)
     return ids
