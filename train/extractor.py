@@ -8,7 +8,7 @@ import os
 
 import tensorflow as tf
 
-import utils
+from deepmath.deephol.train import utils
 
 
 class Extractor(object):
@@ -117,11 +117,6 @@ class Extractor(object):
         del labels['thms']
 
       # tokenize 'goal' and 'thms'.
-      features['goal']= tf.Print(features['goal'], [tf.shape(features['goal'])], "NET SHAPE: ", summarize=-1)
-      features['goal']= tf.Print(features['goal'], [features['goal']], "NET TENSOR: ", summarize=-1)
-      features['goal'] = tf.Print(features['goal'], [features['goal'].dtype], "NET TENSOR: ", summarize=-1)
-
-
       tf.add_to_collection('goal_string', features['goal'])
       features['goal_ids'] = self.tokenize(features['goal'], self.goal_table)
       del features['goal']
