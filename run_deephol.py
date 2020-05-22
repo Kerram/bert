@@ -170,8 +170,6 @@ class InputFeatures(object):
         thm_segment_ids,
         tac_id,
         is_negative,
-        goal_str,
-        thm_str,
         is_real_example=True,
     ):
 
@@ -184,8 +182,6 @@ class InputFeatures(object):
         self.tac_id = tac_id
         self.is_negative = is_negative
         self.is_real_example = is_real_example
-        self.goal_str = goal_str
-        self.thm_str = thm_str
 
 
 class DataProcessor(object):
@@ -262,7 +258,7 @@ class DeepholProcessor(DataProcessor):
                 thm = tokenization.convert_to_unicode(line[1])
                 is_negative = "True"
                 label = "0"
-                tac_id = "0" # TODO change
+                tac_id = "0"  # TODO change
             else:
                 goal = tokenization.convert_to_unicode(line[0])
                 thm = tokenization.convert_to_unicode(line[1])
@@ -320,8 +316,6 @@ def convert_single_example(
             tac_id=0,
             is_negative=True,
             is_real_example=False,
-            goal_str="",
-            thm_str="",
         )
 
     tac_label_map = {}
@@ -398,8 +392,6 @@ def convert_single_example(
         tac_id=tac_id,
         is_negative=is_negative,
         is_real_example=True,
-        goal_str=example.goal,
-        thm_str=example.thm,
     )
 
     return feature
@@ -439,10 +431,6 @@ def file_based_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
-        features["goal_str"] = tf.train.Feature(bytes_list=tf.train.BytesList(
-            value=[bytes(feature.goal_str, encoding="utf-8")]))
-        features['thm_str'] = tf.train.Feature(bytes_list=tf.train.BytesList(
-            value=[bytes(feature.thm_str, encoding="utf-8")]))
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
@@ -462,8 +450,6 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
-        'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
-        'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
     }
 
     def _decode_record(record, name_to_features):
@@ -762,9 +748,11 @@ def update_features_using_deephol(features, max_seq_length):
 
     with tf.variable_scope('extractor'):
         tf.logging.info("********** Tokenization of goal in Holist ********")
-        tf.add_to_collection('goal_string', features['goal_str'])
+        goal_str = tf.Variable([''], dtype=tf.string)
 
-        goal = tensor_tokenizer.tokenize(features['goal_str'], max_seq_length)
+        tf.add_to_collection('goal_string', goal_str)
+
+        goal = tensor_tokenizer.tokenize(goal_str, max_seq_length)
 
         goal = _pad_up_to(goal, max_seq_length, 1)
         goal_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), goal)
@@ -776,9 +764,11 @@ def update_features_using_deephol(features, max_seq_length):
 
 
         tf.logging.info("********** Tokenization of theorem in Holist ********")
-        tf.add_to_collection('thm_string', features['thm_str'])
+        thm_str = tf.Variable([''], dtype=tf.string)
 
-        thm = tensor_tokenizer.tokenize(features['thm_str'], max_seq_length)
+        tf.add_to_collection('thm_string', thm_str)
+
+        thm = tensor_tokenizer.tokenize(thm_str, max_seq_length)
 
         thm = _pad_up_to(thm, max_seq_length, 1)
         thm_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), thm)
@@ -1084,6 +1074,9 @@ def main(_):
     num_train_steps = None
     num_warmup_steps = None
 
+    tf.logging.info("Preparation completed!")
+
+
     if FLAGS.do_train:
         train_examples = processor.get_train_examples(FLAGS.data_dir)
         num_train_steps = int(
@@ -1260,8 +1253,6 @@ def main(_):
             "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
-            "goal_str": tf.placeholder(dtype=tf.string, shape=[None]),
-            "thm_str": tf.placeholder(dtype=tf.string, shape=[None]),
         }
         label_spec = {}
         build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
