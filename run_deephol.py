@@ -1293,13 +1293,8 @@ def main(_):
         save_hook = tf.train.CheckpointSaverHook(FLAGS.output_dir, save_secs=1)
         result = estimator.predict(input_fn=predict_input_fn, hooks=[save_hook])
         # now you will get graph.pbtxt which is used in SavedModel, and then
-        output_predict_file = os.path.join(FLAGS.output_dir, "test_results.tsv")
-        with tf.gfile.GFile(output_predict_file, "w") as writer:
-            num_written_lines = 0
-            tf.logging.info("***** Predict results *****")
-            for (i, prediction) in enumerate(result):
-                num_written_lines += 1
-        assert num_written_lines == num_actual_predict_examples
+        for _ in result:
+            break
 
 
         estimator._export_to_tpu = False
