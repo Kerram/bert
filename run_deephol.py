@@ -589,7 +589,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     return (log_prob_tactic, tac_logits, tac_probabilities)
 
 
-def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_labels):
+def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_example):
     # concat goal_net, thm_net and their dot product as in deephol
     hidden_size = goal_net.shape[-1].value
     # [batch_size, 3 * hidden_size]
@@ -598,19 +598,19 @@ def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_
     # Adding 3 dense layers with dropout like in deephol
     # with tf.variable_scope("loss"):
     if is_training:
-        net = tf.nn.dropout(net, keep_prob=0.7)
+        net = tf.nn.dropout(net, rate=(1 - 0.7))
     net = tf.layers.dense(
         net, hidden_size, activation=tf.nn.relu, name="par_dense1"
     )
 
     if is_training:
-        net = tf.nn.dropout(net, keep_prob=0.7)
+        net = tf.nn.dropout(net, rate=(1 - 0.7))
     net = tf.layers.dense(
         net, hidden_size, activation=tf.nn.relu, name="par_dense2"
     )
 
     if is_training:
-        net = tf.nn.dropout(net, keep_prob=0.7)
+        net = tf.nn.dropout(net, rate=(1 - 0.7))
     net = tf.layers.dense(
         net, hidden_size, activation=tf.nn.relu, name="par_dense3"
     )
@@ -620,29 +620,35 @@ def pairwise_classifier(goal_net, thm_net, is_training, is_negative_labels, tac_
 
     tf.add_to_collection('pairwise_score', par_logits)
 
-    # [batch_size, 1]
-    par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
-        labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),  # TODO odfiltrować negatyne sample
+    # scalar
+    ce_loss = tf.losses.sigmoid_cross_entropy(
+        multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
         logits=par_logits,
-    )
+        reduction=tf.losses.Reduction.SUM)
+
+    # # [batch_size, 1]
+    # par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
+    #     labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),  # TODO odfiltrować negatyne sample
+    #     logits=par_logits,
+    # )
 
     # [batch_size]
-    par_logits = tf.squeeze(par_logits, [1])
-    par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
+   # par_logits = tf.squeeze(par_logits, [1])
+   # par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
 
     #  sum, not mean, as opposed to tactic classifier
     #  a bit strange but they did so in deephol
     #  presumably it makes the code less scalable for batch_size
-    par_loss = tf.reduce_sum(par_per_example_loss)
+   # par_loss = tf.reduce_sum(par_per_example_loss)
 
-    tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
-    tf.logging.info(
-        "par_per_example_loss.shape = %s" % (par_per_example_loss.shape)
-    )
+    # tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
+    # tf.logging.info(
+    #     "par_per_example_loss.shape = %s" % (par_per_example_loss.shape)
+    # )
     # par_logits = tf.print(par_logits, [tf.shape(par_logits)], "par_logits_shape: ", summarize =-1)
     # par_per_example_loss = tf.print(par_per_example_loss, [tf.shape(par_per_example_loss)], "par_per_example_loss_shape: ", summarize =-1)
 
-    return (par_loss, par_per_example_loss, par_logits)
+    return (ce_loss, par_logits)
 
 
 def create_model(
@@ -690,19 +696,19 @@ def create_model(
         ) = tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example)
 
     with tf.variable_scope("pairwise_scorer"):
-        (par_loss, par_per_example_loss, par_logits) = pairwise_classifier(
-            goal_net, thm_net, is_training, is_negative_labels, tac_ids
+        (par_loss, par_logits) = pairwise_scorer(
+            goal_net, thm_net, is_training, is_negative_labels, is_real_example
         )
 
-    total_loss = par_loss + tac_loss
+    total_loss = (0.5 * par_loss) + tac_loss
 
     return (
         total_loss,
-        par_per_example_loss,
         tac_logits,
         tac_probabilities,
         par_loss,
         par_logits,
+        tac_loss,
     )
 
 
@@ -848,11 +854,11 @@ def model_fn_builder(
 
         (
             total_loss,
-            par_per_example_loss,
             tac_logits,
             tac_probabilities,
             par_loss,
             par_logits,
+            tac_loss,
         ) = create_model(
             bert_config,
             goal_input_ids,
@@ -940,11 +946,12 @@ def model_fn_builder(
 
             def metric_fn(
                 tac_logits,
-                par_per_example_loss,
                 par_logits,
                 tac_ids,
                 is_negative,
                 is_real_example,
+                tac_loss,
+                par_loss,
             ):
                 # tactic_topk_accuracy = tf.metrics.mean(
                 #     tf.reshape(tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), [-1]), weights=is_real_example)
@@ -962,37 +969,36 @@ def model_fn_builder(
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
                 # Tactic accuracy
+                is_negative = tf.to_float(is_negative)
                 tac_accuracy = tf.metrics.accuracy(
-                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example
+                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example * (1 - is_negative)
                 )
 
                 # Top 5 tactics accuracy
                 topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))
                 # topk_preds = tf.boolean_mask(topk_preds, is_real_example)
                 tac_topk_accuracy = tf.metrics.mean(
-                    values=topk_preds, weights=is_real_example
+                    values=topk_preds, weights=is_real_example * (1 - is_negative)
                 )
 
                 # for evaluation we count mean of both losses
                 # tac_loss = tf.metrics.mean(
                 #     values=tac_per_example_loss, weights=is_real_example
                 # )
-                par_loss = tf.metrics.mean(   # TODO SUM!!!
-                    values=par_per_example_loss, weights=is_real_example
-                )
-
-                tot_loss = par_loss # + tac_loss
+                #tac_loss = tf.reduce_max(tac_loss)
+                # par_loss = tf.metrics.mean(   # TODO SUM!!!
+                #     values=par_per_example_loss, weights=is_real_example
+                # )
 
                 par_pred = tf.sigmoid(par_logits)
                 pos_guess = tf.to_float(tf.greater(par_pred, 0.5))
                 neg_guess = tf.to_float(tf.less(par_pred, 0.5))
 
-                is_negative = tf.to_float(is_negative)
                 pos_acc = tf.metrics.mean(
-                    values=pos_guess, weights=is_real_example * (is_negative)
+                    values=pos_guess, weights=is_real_example * (1 - is_negative)
                 )
                 neg_acc = tf.metrics.mean(
-                    values=neg_guess, weights=is_real_example * (1 - is_negative)
+                    values=neg_guess, weights=is_real_example * (is_negative)
                 )
                 # pos_logits = reduce_mean_weighted(par_logits, 1 - is_negative)
                 # neg_logits = reduce_mean_weighted(pos_logits, is_negative)
@@ -1011,17 +1017,23 @@ def model_fn_builder(
                 # neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
                 # acc_50_50 = (pos_acc + neg_acc) / 2.
 
+                tot_loss = (0.5 * par_loss) + tac_loss
+                tot_loss = tf.metrics.mean(tot_loss)
+
+                tac_loss = tf.metrics.mean(tac_loss)
+                par_loss = tf.metrics.mean(par_loss)
+
                 res = {
                     # 'pos_logits': pos_logits,
                     # 'neg_logits': neg_logits,
                     # 'pos_pred': pos_pred,
                     # 'neg_pred': neg_pred,
-                    "pos_acc": pos_acc,
-                    "neg_acc": neg_acc,
+                     "pos_acc": pos_acc,
+                     "neg_acc": neg_acc,
                     # 'acc_50_50': acc_50_50,
                     "tac_accuracy": tac_accuracy,
                     "tac_topk_accuracy": tac_topk_accuracy,
-                    # "tac_loss": tac_loss,
+                    "tac_loss": tac_loss,
                     "par_loss": par_loss,
                     "total_loss": tot_loss,
                 }
@@ -1032,11 +1044,12 @@ def model_fn_builder(
                 metric_fn,
                 [
                     tac_logits,
-                    par_per_example_loss,
                     par_logits,
                     tac_ids,
                     is_negative,
                     is_real_example,
+                    tf.ones(params['batch_size']) * tac_loss,
+                    tf.ones(params['batch_size']) * par_loss,
                 ],
             )
 
