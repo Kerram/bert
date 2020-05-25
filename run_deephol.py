@@ -968,6 +968,9 @@ def model_fn_builder(
 
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
+                chosen_tac = tf.metrics.mean(tac_predictions)
+                chosen_tac_acc = tf.metrics.accuracy(labels=tac_predictions, predictions=tf.ones(tf.shape(tac_predictions))*5.0)
+
                 # Tactic accuracy
                 is_negative = tf.to_float(is_negative)
                 tac_accuracy = tf.metrics.accuracy(
@@ -1036,6 +1039,9 @@ def model_fn_builder(
                     "tac_loss": tac_loss,
                     "par_loss": par_loss,
                     "total_loss": tot_loss,
+                    "chosen_tactic (mean)": chosen_tac,
+                    "chosen_tactic (acc)": chosen_tac_acc,
+                    # "chosen_tactic (min)": chosen_tac_max,
                 }
 
                 return res
