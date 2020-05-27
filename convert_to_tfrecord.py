@@ -90,6 +90,8 @@ class InputFeatures(object):
         thm_segment_ids,
         tac_id,
         is_negative,
+        goal_str,
+        thm_str,
         is_real_example=True,
     ):
 
@@ -102,6 +104,8 @@ class InputFeatures(object):
         self.tac_id = tac_id
         self.is_negative = is_negative
         self.is_real_example = is_real_example
+        self.goal_str = goal_str
+        self.thm_str = thm_str
 
 
 class DataProcessor(object):
@@ -204,7 +208,7 @@ def convert_tokens(tokens, tokenizer, max_seq_length):
         input_mask.append(0)
         segment_ids.append(0)
 
-    return (res, input_ids, input_mask, segment_ids)
+    return res, input_ids, input_mask, segment_ids
 
 
 def convert_single_example(
@@ -223,6 +227,8 @@ def convert_single_example(
             tac_id=0,
             is_negative=True,
             is_real_example=False,
+            goal_str="",
+            thm_str="",
         )
 
     tac_label_map = {}
@@ -299,6 +305,8 @@ def convert_single_example(
         tac_id=tac_id,
         is_negative=is_negative,
         is_real_example=True,
+        goal_str=example.goal,
+        thm_str=example.thm,
     )
 
     return feature
@@ -344,6 +352,51 @@ def file_based_convert_examples_to_features(
     writer.close()
 
 
+def test_set_convert_examples_to_features(
+    examples, tac_label_list, is_negative_list, max_seq_length, tokenizer, output_file
+):
+    """Convert a set of `InputExample`s to a TFRecord file.
+    In case of a test set we add goal and theorem strings as additional fetures."""
+
+    writer = tf.python_io.TFRecordWriter(output_file)
+
+    for (ex_index, example) in enumerate(examples):
+        if ex_index % 10000 == 0:
+            tf.logging.info("Writing example %d of %d" % (ex_index, len(examples)))
+
+        feature = convert_single_example(
+            ex_index,
+            example,
+            tac_label_list,
+            is_negative_list,
+            max_seq_length,
+            tokenizer,
+        )
+
+        def create_int_feature(values):
+            f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
+            return f
+
+        features = collections.OrderedDict()
+        features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
+        features["goal_input_mask"] = create_int_feature(feature.goal_input_mask)
+        features["goal_segment_ids"] = create_int_feature(feature.goal_segment_ids)
+        features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
+        features["thm_input_mask"] = create_int_feature(feature.thm_input_mask)
+        features["thm_segment_ids"] = create_int_feature(feature.thm_segment_ids)
+        features["tac_ids"] = create_int_feature([feature.tac_id])
+        features["is_negative"] = create_int_feature([feature.is_negative])
+        features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
+        features["goal_str"] = tf.train.Feature(bytes_list=tf.train.BytesList(
+            value=[bytes(feature.goal_str, encoding="utf-8")]))
+        features['thm_str'] = tf.train.Feature(bytes_list=tf.train.BytesList(
+            value=[bytes(feature.thm_str, encoding="utf-8")]))
+
+        tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+        writer.write(tf_example.SerializeToString())
+    writer.close()
+
+
 def main(_):
     csv.field_size_limit(sys.maxsize)
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -365,14 +418,24 @@ def main(_):
         while len(examples) % FLAGS.eval_batch_size != 0:
             examples.append(PaddingInputExample())
 
-    file_based_convert_examples_to_features(
-        examples,
-        tac_labels,
-        is_negative_labels,
-        FLAGS.max_seq_length,
-        tokenizer,
-        FLAGS.output_path,
-    )
+    if FLAGS.set_type == 'test':
+        test_set_convert_examples_to_features(
+            examples,
+            tac_labels,
+            is_negative_labels,
+            FLAGS.max_seq_length,
+            tokenizer,
+            FLAGS.output_path,
+        )
+    else:
+        file_based_convert_examples_to_features(
+            examples,
+            tac_labels,
+            is_negative_labels,
+            FLAGS.max_seq_length,
+            tokenizer,
+            FLAGS.output_path,
+        )
 
 
 if __name__ == "__main__":

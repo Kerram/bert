@@ -5,7 +5,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import csv
 import os
 import modeling
@@ -66,20 +65,14 @@ flags.DEFINE_bool("do_eval", True, "Whether to run eval on the dev set.")
 flags.DEFINE_string("eval_file", None, "Path to eval tf_record file.")
 
 flags.DEFINE_bool(
-    "do_predict", False, "Whether to run the model in inference mode on the test set."
-)
-
-flags.DEFINE_bool(
     "do_export", False, "Whether to export the model."
 )
 
-flags.DEFINE_string("test_file", None, "Path to test tf_record file. It is also used during export of the model.")
+flags.DEFINE_string("test_file", None, "Path to test tf_record file. It is used to export model.")
 
 flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
-
-flags.DEFINE_integer("predict_batch_size", 8, "Total batch size for predict.")
 
 flags.DEFINE_float("learning_rate", 1e-5, "The initial learning rate for Adam.")
 
@@ -137,310 +130,8 @@ flags.DEFINE_integer(
 )
 
 
-class InputExample(object):
-    """A single training/test example for simple sequence classification."""
-
-    def __init__(self, guid, goal, thm, tac_id=None, is_negative=None):
-        """Constructs a InputExample.
-
-    Args:
-      guid: Unique id for the example.
-      goal: The untokenized goal string 
-      thm:  The untokenized theorem string.
-      tac_id: id of tactic for the goal
-      is_negative: indicates whether the theorem matches the goal
-    """
-        self.guid = guid
-        self.goal = goal
-        self.thm = thm
-        self.tac_id = tac_id
-        self.is_negative = is_negative
-
-
-class PaddingInputExample(object):
-    """Fake example so the num input examples is a multiple of the batch size.
-     See run_classifier.py for details.
-  """
-
-
-class InputFeatures(object):
-    """A single set of features of data."""
-
-    def __init__(
-        self,
-        goal_input_ids,
-        goal_input_mask,
-        goal_segment_ids,
-        thm_input_ids,
-        thm_input_mask,
-        thm_segment_ids,
-        tac_id,
-        is_negative,
-        is_real_example=True,
-    ):
-
-        self.goal_input_ids = goal_input_ids
-        self.goal_input_mask = goal_input_mask
-        self.goal_segment_ids = goal_segment_ids
-        self.thm_input_ids = thm_input_ids
-        self.thm_input_mask = thm_input_mask
-        self.thm_segment_ids = thm_segment_ids
-        self.tac_id = tac_id
-        self.is_negative = is_negative
-        self.is_real_example = is_real_example
-
-
-class DataProcessor(object):
-    """Base class for data converters for sequence classification data sets."""
-
-    def get_train_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the train set."""
-        raise NotImplementedError()
-
-    def get_dev_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the dev set."""
-        raise NotImplementedError()
-
-    def get_test_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for prediction."""
-        raise NotImplementedError()
-
-    def get_tac_labels(self):
-        """Gets the list tac_ids"""
-        raise NotImplementedError()
-
-    def get_is_negative_labels(self):
-        """Gets the list of is_negative labels"""
-        raise NotImplementedError()
-
-    @classmethod
-    def _read_tsv(cls, input_file, quotechar=None):
-        """Reads a tab separated value file."""
-        with tf.gfile.Open(input_file, "r") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
-
-
-class DeepholProcessor(DataProcessor):
-    """Processor for Deephol dataset"""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train"
-        )
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "valid.tsv")), "valid"
-        )
-
-    def get_test_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test"
-        )
-
-    def get_tac_labels(self):
-        return [str(i) for i in range(41)]
-
-    def get_is_negative_labels(self):
-        return ["True", "False"]
-
-    def _create_examples(self, lines, set_type):
-        examples = []
-        for (i, line) in enumerate(lines):
-            """ skip header """
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, i)
-            if set_type == "test":
-                # TODO - obejrzeć dokładnie test-set
-                goal = tokenization.convert_to_unicode(line[0])
-                thm = tokenization.convert_to_unicode(line[1])
-                is_negative = "True"
-                label = "0"
-                tac_id = "0"  # TODO change
-            else:
-                goal = tokenization.convert_to_unicode(line[0])
-                thm = tokenization.convert_to_unicode(line[1])
-                is_negative = tokenization.convert_to_unicode(line[2])
-                tac_id = tokenization.convert_to_unicode(line[3])
-            examples.append(
-                InputExample(
-                    guid=guid,
-                    goal=goal,
-                    thm=thm,
-                    tac_id=tac_id,
-                    is_negative=is_negative,
-                )
-            )
-        return examples
-
-
-def convert_tokens(tokens, tokenizer, max_seq_length):
-    res = []
-    segment_ids = []
-    res.append("[CLS]")
-    segment_ids.append(0)
-
-    for token in tokens:
-        res.append(token)
-        segment_ids.append(0)
-
-    res.append("[SEP]")
-    segment_ids.append(0)
-
-    input_ids = tokenizer.convert_tokens_to_ids(res)
-    input_mask = [1] * len(input_ids)
-
-    while len(input_ids) < max_seq_length:
-        input_ids.append(0)
-        input_mask.append(0)
-        segment_ids.append(0)
-
-    return (res, input_ids, input_mask, segment_ids)
-
-
-def convert_single_example(
-    ex_index, example, tac_label_list, is_negative_label_list, max_seq_length, tokenizer
-):
-    """Converts a single `InputExample` into a single `InputFeatures`."""
-
-    if isinstance(example, PaddingInputExample):
-        return InputFeatures(
-            goal_input_ids=[0] * max_seq_length,
-            goal_input_mask=[0] * max_seq_length,
-            goal_segment_ids=[0] * max_seq_length,
-            thm_input_ids=[0] * max_seq_length,
-            thm_input_mask=[0] * max_seq_length,
-            thm_segment_ids=[0] * max_seq_length,
-            tac_id=0,
-            is_negative=True,
-            is_real_example=False,
-        )
-
-    tac_label_map = {}
-    for (i, label) in enumerate(tac_label_list):
-        tac_label_map[label] = i
-
-    is_negative_label_map = {}
-    for (i, label) in enumerate(is_negative_label_list):
-        is_negative_label_map[label] = i
-
-    g_tokens = tokenizer.tokenize(example.goal)
-    t_tokens = tokenizer.tokenize(example.thm)
-
-    if len(g_tokens) > max_seq_length - 2:
-        g_tokens = g_tokens[0 : (max_seq_length - 2)]
-
-    if len(t_tokens) > max_seq_length - 2:
-        t_tokens = t_tokens[0 : (max_seq_length - 2)]
-
-    (goal_tokens, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(
-        g_tokens, tokenizer, max_seq_length
-    )
-    (thm_tokens, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(
-        t_tokens, tokenizer, max_seq_length
-    )
-
-    assert len(goal_input_ids) == max_seq_length
-    assert len(goal_input_mask) == max_seq_length
-    assert len(goal_segment_ids) == max_seq_length
-    assert len(thm_input_ids) == max_seq_length
-    assert len(thm_input_mask) == max_seq_length
-    assert len(thm_segment_ids) == max_seq_length
-
-    tac_id = tac_label_map[example.tac_id]
-    is_negative = is_negative_label_map[example.is_negative]
-
-    if ex_index < 1:
-        tf.logging.info("*** Example ***")
-        tf.logging.info("guid: %s" % (example.guid))
-        tf.logging.info(
-            "goal_tokens: %s"
-            % " ".join([tokenization.printable_text(x) for x in goal_tokens])
-        )
-        tf.logging.info(
-            "thm_tokens: %s"
-            % " ".join([tokenization.printable_text(x) for x in thm_tokens])
-        )
-        tf.logging.info(
-            "goal_input_ids: %s" % " ".join([str(x) for x in goal_input_ids])
-        )
-        tf.logging.info("thm_input_ids: %s" % " ".join([str(x) for x in thm_input_ids]))
-        tf.logging.info(
-            "goal_input_mask: %s" % " ".join([str(x) for x in goal_input_mask])
-        )
-        tf.logging.info(
-            "thm_input_mask: %s" % " ".join([str(x) for x in thm_input_mask])
-        )
-        tf.logging.info(
-            "goal_segment_ids: %s" % " ".join([str(x) for x in goal_segment_ids])
-        )
-        tf.logging.info(
-            "thm_segment_ids: %s" % " ".join([str(x) for x in thm_segment_ids])
-        )
-        tf.logging.info("tac_id: %d" % (tac_id))
-        tf.logging.info("is_negative: %s" % (example.is_negative))
-
-    feature = InputFeatures(
-        goal_input_ids=goal_input_ids,
-        goal_input_mask=goal_input_mask,
-        goal_segment_ids=goal_segment_ids,
-        thm_input_ids=thm_input_ids,
-        thm_input_mask=thm_input_mask,
-        thm_segment_ids=thm_segment_ids,
-        tac_id=tac_id,
-        is_negative=is_negative,
-        is_real_example=True,
-    )
-
-    return feature
-
-
-def file_based_convert_examples_to_features(
-    examples, tac_label_list, is_negative_list, max_seq_length, tokenizer, output_file
-):
-    """Convert a set of `InputExample`s to a TFRecord file."""
-
-    writer = tf.python_io.TFRecordWriter(output_file)
-
-    for (ex_index, example) in enumerate(examples):
-        if ex_index % 10000 == 0:
-            tf.logging.info("Writing example %d of %d" % (ex_index, len(examples)))
-
-        feature = convert_single_example(
-            ex_index,
-            example,
-            tac_label_list,
-            is_negative_list,
-            max_seq_length,
-            tokenizer,
-        )
-
-        def create_int_feature(values):
-            f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
-            return f
-
-        features = collections.OrderedDict()
-        features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
-        features["goal_input_mask"] = create_int_feature(feature.goal_input_mask)
-        features["goal_segment_ids"] = create_int_feature(feature.goal_segment_ids)
-        features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
-        features["thm_input_mask"] = create_int_feature(feature.thm_input_mask)
-        features["thm_segment_ids"] = create_int_feature(feature.thm_segment_ids)
-        features["tac_ids"] = create_int_feature([feature.tac_id])
-        features["is_negative"] = create_int_feature([feature.is_negative])
-        features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
-
-        tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-        writer.write(tf_example.SerializeToString())
-    writer.close()
+def get_tac_labels():
+    return [str(i) for i in range(41)]
 
 
 def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remainder):
@@ -496,6 +187,50 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
     return input_fn
 
 
+def build_predict_fake_input_fn(input_file, seq_length, drop_remainder):
+    """Creates an `input_fn` closure to be passed to TPUEstimator.
+    This function differs from the one used for train and valid sets, because
+    we add goal and thm strings as additional features."""
+
+    name_to_features = {
+        "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
+        "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "thm_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "thm_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
+        "thm_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "tac_ids": tf.FixedLenFeature([], tf.int64),
+        "is_negative": tf.FixedLenFeature([], tf.int64),
+        "is_real_example": tf.FixedLenFeature([], tf.int64),
+        'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
+        'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
+    }
+
+    def _decode_record(record, name_to_features):
+        """Decodes a record to a TensorFlow example."""
+        example = tf.parse_single_example(record, name_to_features)
+
+        return example
+
+    def input_fn(params):
+        """The actual input function."""
+        batch_size = params["batch_size"]
+
+        d = tf.data.TFRecordDataset(input_file)
+
+        d = d.apply(
+            tf.contrib.data.map_and_batch(
+                lambda record: _decode_record(record, name_to_features),
+                batch_size=batch_size,
+                drop_remainder=drop_remainder,
+            )
+        )
+
+        return d
+
+    return input_fn
+
+
 def create_encoding(
     name,
     is_training,
@@ -519,24 +254,7 @@ def create_encoding(
 
         tf.add_to_collection(name + '_net', output)
 
-        # TODO tutaj nie jestem pewien, czy to powinno być, bo odnosi się do negative examples, które my mamy de facto osobno?
-        # No i to tylko do goala!
-        # The second goal_net in the collection contains duplicates, aligning with the
-        # number of positive and negative theorems. The predictor will feed this value
-        # in to compute the score of goal/theorem pairs.
-        # output shape: [goal_tiling_size * batch_size, hidden_size]
-        #goal_tiling_size = params.ratio_neg_examples + 1
-        #goal_net = tf.tile(goal_net, [goal_tiling_size, 1])
-        #tf.add_to_collection('goal_net', goal_net)
-
         return output
-
-
-def tf_reduce_mean_weighted(values, weights):
-    """Deephol import from losses.py"""
-    values = tf.reshape(values, [-1])
-    weights = tf.reshape(weights, [-1])
-    return tf.divide(tf.tensordot(values, weights, 1), tf.reduce_sum(weights))
 
 
 def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example):
@@ -572,27 +290,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
 
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
 
-
-
-
-
-
-    # tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
-    # log_probs = tf.nn.log_softmax(tac_logits, axis=-1)
-    #
-    # one_hot_labels = tf.one_hot(tac_labels, depth=num_tac_labels, dtype=tf.float32)
-    #
-    # tac_per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1) # TODO Why this?
-    # tac_loss = tf.reduce_mean(tac_per_example_loss)
-    #
-    # tf.logging.info("tac_logits.shape = %s" % (tac_logits.shape))
-    # tf.logging.info(
-    #     "tac_per_example_loss.shape = %s" % (tac_per_example_loss.shape)
-    # )
-    # tac_per_example_loss = tf.print(tac_per_example_loss, [tf.shape(tac_per_example_loss)], "tac_per_example_loss_shape: ", summarize =-1)
-    # tac_logits = tf.print(tac_logits, [tf.shape(tac_logits)], "tac_logits_shape: ", summarize =-1)
-
-    return (log_prob_tactic, tac_logits, tac_probabilities)
+    return log_prob_tactic, tac_logits, tac_probabilities
 
 
 def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_example):
@@ -632,29 +330,7 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
         logits=par_logits,
         reduction=tf.losses.Reduction.SUM)
 
-    # # [batch_size, 1]
-    # par_per_example_loss = 0.5 * tf.nn.sigmoid_cross_entropy_with_logits(
-    #     labels=tf.cast(tf.expand_dims(is_negative_labels, 1), tf.float32),  # TODO odfiltrować negatyne sample
-    #     logits=par_logits,
-    # )
-
-    # [batch_size]
-   # par_logits = tf.squeeze(par_logits, [1])
-   # par_per_example_loss = tf.squeeze(par_per_example_loss, [1])
-
-    #  sum, not mean, as opposed to tactic classifier
-    #  a bit strange but they did so in deephol
-    #  presumably it makes the code less scalable for batch_size
-   # par_loss = tf.reduce_sum(par_per_example_loss)
-
-    # tf.logging.info("par_logits.shape = %s" % (par_logits.shape))
-    # tf.logging.info(
-    #     "par_per_example_loss.shape = %s" % (par_per_example_loss.shape)
-    # )
-    # par_logits = tf.print(par_logits, [tf.shape(par_logits)], "par_logits_shape: ", summarize =-1)
-    # par_per_example_loss = tf.print(par_per_example_loss, [tf.shape(par_per_example_loss)], "par_per_example_loss_shape: ", summarize =-1)
-
-    return (ce_loss, par_logits)
+    return ce_loss, par_logits
 
 
 def create_model(
@@ -740,15 +416,6 @@ class Remover:
         return self.keys_list
 
 
-def reduce_mean_weighted(values, weights):
-    weights = tf.to_float(weights)
-    w_sum = tf.math.reduce_sum(weights)
-    mean = tf.divide(tf.reduce_sum(values * weights), w_sum)
-    return tf.cond(
-        tf.equal(w_sum, tf.constant(0.0)), lambda: tf.constant(0.0), lambda: mean
-    )
-
-
 def _pad_up_to(value, size, axis, name=None):
   """Pad a tensor with zeros on the right along axis to a least the given size.
 
@@ -787,11 +454,9 @@ def update_features_using_deephol(features, max_seq_length):
 
     with tf.variable_scope('extractor'):
         tf.logging.info("********** Tokenization of goal in Holist ********")
-        goal_str = tf.Variable([''], dtype=tf.string)
+        tf.add_to_collection('goal_string', features['goal_str'])
 
-        tf.add_to_collection('goal_string', goal_str)
-
-        goal = tensor_tokenizer.tokenize(goal_str, max_seq_length)
+        goal = tensor_tokenizer.tokenize(features['goal_str'], max_seq_length)
 
         goal = _pad_up_to(goal, max_seq_length, 1)
         goal_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), goal)
@@ -801,13 +466,10 @@ def update_features_using_deephol(features, max_seq_length):
         features['goal_input_mask'] = goal_input_mask
         features['goal_segment_ids'] = goal_segment_ids
 
-
         tf.logging.info("********** Tokenization of theorem in Holist ********")
-        thm_str = tf.Variable([''], dtype=tf.string)
+        tf.add_to_collection('thm_string', features['thm_str'])
 
-        tf.add_to_collection('thm_string', thm_str)
-
-        thm = tensor_tokenizer.tokenize(thm_str, max_seq_length)
+        thm = tensor_tokenizer.tokenize(features['thm_str'], max_seq_length)
 
         thm = _pad_up_to(thm, max_seq_length, 1)
         thm_input_mask = tf.map_fn(lambda x: tf.map_fn(to_mask, x), thm)
@@ -827,7 +489,8 @@ def model_fn_builder(
     num_warmup_steps,
     use_tpu,
     use_one_hot_embeddings,
-    max_seq_length
+    max_seq_length,
+    do_export,
 ):
     def model_fn(features, labels, mode, params):
 
@@ -835,7 +498,7 @@ def model_fn_builder(
         for name in sorted(features.keys()):
             tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
 
-        if not use_tpu:  # HOList does not use TPU.
+        if do_export:  # HOList has different expectation towards input features.
             update_features_using_deephol(features, max_seq_length)
 
         tf.logging.info("*** Features after deephol ***")
@@ -893,7 +556,6 @@ def model_fn_builder(
             ) = modeling.get_assignment_map_from_checkpoint(tvars, init_checkpoint)
 
             if use_tpu:
-
                 def tpu_scaffold():
                     tf.train.warm_start(
                         init_checkpoint,
@@ -913,7 +575,7 @@ def model_fn_builder(
 
                 scaffold_fn = tpu_scaffold
 
-            else:
+            elif do_export:
                 tf.train.warm_start(
                     init_checkpoint,
                     "encoder/*")
@@ -925,6 +587,21 @@ def model_fn_builder(
                 tf.train.warm_start(
                     init_checkpoint,
                     "pairwise_scorer/*")
+
+            else:
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "encoder/dilated_cnn_pairwise_encoder/thm/bert*",
+                    None,
+                    Remover(["encoder/dilated_cnn_pairwise_encoder/thm/"]),
+                )
+
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "encoder/dilated_cnn_pairwise_encoder/goal/bert*",
+                    None,
+                    Remover(["encoder/dilated_cnn_pairwise_encoder/goal/"]),
+                )
 
         # Ten komunikat się nie będzie do końca zgadzał
         tf.logging.info("**** Trainable Variables ****")
@@ -959,45 +636,23 @@ def model_fn_builder(
                 tac_loss,
                 par_loss,
             ):
-                # tactic_topk_accuracy = tf.metrics.mean(
-                #     tf.reshape(tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5)), [-1]), weights=is_real_example)
-                #
-                # choices_tactic = tf.argmax(tac_logits, -1)
-                # correct_tactics = tf.equal(tf.to_int64(tac_ids), choices_tactic)
-                # tactic_accuracy = tf.metrics.mean(
-                #     tf.to_float(correct_tactics), weights=is_real_example)
-                #
-                # # TODO to pewnie źle, ale do końca nie rozumiem, jak oni to liczą tymi eval_opsami w Deepholu bo biorą średnią ze skalara?
-                # # Compute the log loss for the tactic logits.
-                # tac_loss = tf.losses.sparse_softmax_cross_entropy(
-                #     logits=tac_logits, labels=tac_ids, weights=is_real_example)
-
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
                 chosen_tac = tf.metrics.mean(tac_predictions)
                 chosen_tac_acc = tf.metrics.accuracy(labels=tac_predictions, predictions=tf.ones(tf.shape(tac_predictions))*5.0)
 
-                # Tactic accuracy
                 is_negative = tf.to_float(is_negative)
+
+                # Tactic accuracy
                 tac_accuracy = tf.metrics.accuracy(
                     labels=tac_ids, predictions=tac_predictions, weights=is_real_example * (1 - is_negative)
                 )
 
                 # Top 5 tactics accuracy
                 topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))
-                # topk_preds = tf.boolean_mask(topk_preds, is_real_example)
                 tac_topk_accuracy = tf.metrics.mean(
                     values=topk_preds, weights=is_real_example * (1 - is_negative)
                 )
-
-                # for evaluation we count mean of both losses
-                # tac_loss = tf.metrics.mean(
-                #     values=tac_per_example_loss, weights=is_real_example
-                # )
-                #tac_loss = tf.reduce_max(tac_loss)
-                # par_loss = tf.metrics.mean(   # TODO SUM!!!
-                #     values=par_per_example_loss, weights=is_real_example
-                # )
 
                 par_pred = tf.sigmoid(par_logits)
                 pos_guess = tf.to_float(tf.greater(par_pred, 0.5))
@@ -1009,22 +664,6 @@ def model_fn_builder(
                 neg_acc = tf.metrics.mean(
                     values=neg_guess, weights=is_real_example * (is_negative)
                 )
-                # pos_logits = reduce_mean_weighted(par_logits, 1 - is_negative)
-                # neg_logits = reduce_mean_weighted(pos_logits, is_negative)
-
-                # pos_pred = reduce_mean_weighted(par_pred, 1 - is_negative)
-                # neg_pred = reduce_mean_weighted(par_pred, is_negative)
-
-                # pos_acc = reduce_mean_weighted(pos_guess, 1 - is_negative)
-                # neg_acc = reduce_mean_weighted(pos_guess, is_negative)
-
-                # pos_logits = tf.boolean_mask(par_logits, 1 - is_negative)
-                # neg_logits = tf.boolean_mask(par_logits, is_negative)
-                # pos_pred = tf.sigmoid(pos_logits)
-                # neg_pred = tf.sigmoid(neg_logits)
-                # pos_acc = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))
-                # neg_acc = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
-                # acc_50_50 = (pos_acc + neg_acc) / 2.
 
                 tot_loss = (0.5 * par_loss) + tac_loss
                 tot_loss = tf.metrics.mean(tot_loss)
@@ -1033,13 +672,8 @@ def model_fn_builder(
                 par_loss = tf.metrics.mean(par_loss)
 
                 res = {
-                    # 'pos_logits': pos_logits,
-                    # 'neg_logits': neg_logits,
-                    # 'pos_pred': pos_pred,
-                    # 'neg_pred': neg_pred,
-                     "pos_acc": pos_acc,
-                     "neg_acc": neg_acc,
-                    # 'acc_50_50': acc_50_50,
+                    "pos_acc": pos_acc,
+                    "neg_acc": neg_acc,
                     "tac_accuracy": tac_accuracy,
                     "tac_topk_accuracy": tac_topk_accuracy,
                     "tac_loss": tac_loss,
@@ -1047,7 +681,6 @@ def model_fn_builder(
                     "total_loss": tot_loss,
                     "chosen_tactic (mean)": chosen_tac,
                     "chosen_tactic (acc)": chosen_tac_acc,
-                    # "chosen_tactic (min)": chosen_tac_max,
                 }
 
                 return res
@@ -1098,9 +731,9 @@ def main(_):
     csv.field_size_limit(sys.maxsize)
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict and not FLAGS.do_export:
+    if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_export:
         raise ValueError(
-            "At least one of `do_train`, `do_eval`, `do_predict' or `do_predict` must be True."
+            "At least one of `do_train`, `do_eval` or `do_export` must be True."
         )
 
     if FLAGS.do_train and not FLAGS.train_file:
@@ -1113,14 +746,14 @@ def main(_):
             "When running evaluation you must specify eval file."
         )
 
-    if FLAGS.do_predict and not FLAGS.test_file:
-        raise ValueError(
-            "When running test you must specify test file."
-        )
-
     if FLAGS.do_export and not FLAGS.test_file:
         raise ValueError(
             "When exporting model you must specify test file."
+        )
+
+    if FLAGS.do_export and FLAGS.use_tpu:
+        raise ValueError(
+            "You cannot export model using TPU."
         )
 
     bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
@@ -1133,10 +766,6 @@ def main(_):
         )
 
     tf.gfile.MakeDirs(FLAGS.output_dir)
-
-    processor = DeepholProcessor()
-
-    tokenizer = tokenization.LongestTokenizer(vocab=FLAGS.vocab_file)
 
     tpu_cluster_resolver = None
     if FLAGS.use_tpu and FLAGS.tpu_name:
@@ -1157,8 +786,7 @@ def main(_):
         ),
     )
 
-    tac_labels = processor.get_tac_labels()
-    is_negative_labels = processor.get_is_negative_labels()
+    tac_labels = get_tac_labels()
 
     train_examples_count = 0
     num_train_steps = None
@@ -1184,6 +812,7 @@ def main(_):
         use_tpu=FLAGS.use_tpu,
         use_one_hot_embeddings=FLAGS.use_tpu,
         max_seq_length=FLAGS.max_seq_length,
+        do_export=FLAGS.do_export,
     )
 
     estimator = tf.contrib.tpu.TPUEstimator(
@@ -1192,7 +821,7 @@ def main(_):
         config=run_config,
         train_batch_size=FLAGS.train_batch_size,
         eval_batch_size=FLAGS.eval_batch_size,
-        predict_batch_size=FLAGS.predict_batch_size,
+        predict_batch_size=1,  # Does not matter.
     )
 
     if FLAGS.do_train:
@@ -1252,7 +881,7 @@ def main(_):
                 tf.logging.info("  %s = %s", key, str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
-    if FLAGS.do_export: # TODO change after merge with export branch
+    if FLAGS.do_export:
         feature_spec = {
             "goal_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
             "goal_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
@@ -1263,50 +892,31 @@ def main(_):
             "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
+            "goal_str": tf.placeholder(dtype=tf.string, shape=[None]),
+            "thm_str": tf.placeholder(dtype=tf.string, shape=[None]),
         }
         label_spec = {}
         build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
         input_receiver_fn = build_input(feature_spec, label_spec)
 
-        predict_examples = processor.get_test_examples(FLAGS.data_dir)
-        num_actual_predict_examples = len(predict_examples)
-
-        predict_file = os.path.join(FLAGS.output_dir, "predict.tf_record")
-        file_based_convert_examples_to_features(
-            predict_examples,
-            tac_labels,
-            is_negative_labels,
-            FLAGS.max_seq_length,
-            tokenizer,
-            predict_file,
-        )
-
-        predict_drop_remainder = True if FLAGS.use_tpu else False
-        predict_input_fn = file_based_input_fn_builder(
-            input_file=predict_file,
+        predict_input_fn = build_predict_fake_input_fn(
+            input_file=FLAGS.test_file,
             seq_length=FLAGS.max_seq_length,
-            is_training=False,
-            drop_remainder=predict_drop_remainder,
+            drop_remainder=False,
         )
 
         # Export final model
         tf.logging.info('*****  Starting to export model.   *****')
         save_hook = tf.train.CheckpointSaverHook(FLAGS.output_dir, save_secs=1)
         result = estimator.predict(input_fn=predict_input_fn, hooks=[save_hook])
-        # now you will get graph.pbtxt which is used in SavedModel, and then
-        output_predict_file = os.path.join(FLAGS.output_dir, "test_results.tsv")
-        with tf.gfile.GFile(output_predict_file, "w") as writer:
-            num_written_lines = 0
-            tf.logging.info("***** Predict results *****")
-            for (i, prediction) in enumerate(result):
-                num_written_lines += 1
-        assert num_written_lines == num_actual_predict_examples
-
+        # As result is a generator we want to force it to calculate first value (and save checkpoint needed for export).
+        for _ in result:
+            break
 
         estimator._export_to_tpu = False
         estimator.export_savedmodel(
-            export_dir_base=os.path.join(FLAGS.output_dir, 'export/exporter'),
-            serving_input_receiver_fn=input_receiver_fn)
+            export_dir_base=os.path.join(FLAGS.output_dir, 'export/best_exporter'),  # It is not best exporter,
+            serving_input_receiver_fn=input_receiver_fn)                             # but HOList expects it to be.
 
 
 if __name__ == "__main__":
