@@ -129,6 +129,13 @@ flags.DEFINE_integer(
     "Only used if `use_tpu` is True. Total number of TPU cores to use.",
 )
 
+flags.DEFINE_bool(
+    "infinite_eval",
+    False,
+    "If infinite we will run eval on currently newest checkpoint."
+    "If finite than we will run evaluation only once."
+)
+
 
 def get_tac_labels():
     return [str(i) for i in range(41)]
@@ -622,7 +629,7 @@ def model_fn_builder(
             )
 
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-                mode=mode, loss=total_loss, train_op=train_op, scaffold_fn=scaffold_fn
+                mode=mode, loss=total_loss, train_op=train_op, scaffold_fn=scaffold_fn,
             )
 
         elif mode == tf.estimator.ModeKeys.EVAL:
@@ -756,6 +763,11 @@ def main(_):
             "You cannot export model using TPU."
         )
 
+    if not FLAGS.do_eval and FLAGS.infinite_eval:
+        raise ValueError(
+            "You cannot do eval infinitely if you are not doing it at all. Set `do_eval` to True."
+        )
+
     bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
 
     if FLAGS.max_seq_length > bert_config.max_position_embeddings:
@@ -793,7 +805,6 @@ def main(_):
     num_warmup_steps = None
 
     tf.logging.info("Preparation completed!")
-
 
     if FLAGS.do_train:
         train_examples_count = count_records(FLAGS.train_file)
@@ -840,13 +851,6 @@ def main(_):
     if FLAGS.do_eval:
         eval_examples_count = count_records(FLAGS.eval_file)
 
-        tf.logging.info("***** Running evaluation *****")
-        tf.logging.info(
-            "  Num examples = %d (with assumed padding (if running on TPU))",
-            eval_examples_count,
-        )
-        tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
-
         if FLAGS.use_tpu:
             # TPU requires a fixed batch size for all batches, therefore the number
             # of examples must be a multiple of the batch size, or else examples
@@ -872,14 +876,28 @@ def main(_):
             drop_remainder=eval_drop_remainder,
         )
 
-        result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
+        def run_eval():
+            tf.logging.info("***** Running evaluation *****")
+            tf.logging.info(
+                "  Num examples = %d (with assumed padding (if running on TPU))",
+                eval_examples_count,
+            )
+            tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
 
-        output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
-        with tf.gfile.GFile(output_eval_file, "w") as writer:
-            tf.logging.info("***** Eval results *****")
-            for key in sorted(result.keys()):
-                tf.logging.info("  %s = %s", key, str(result[key]))
-                writer.write("%s = %s\n" % (key, str(result[key])))
+            result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
+
+            output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
+            with tf.gfile.GFile(output_eval_file, "w") as writer:
+                tf.logging.info("***** Eval results *****")
+                for key in sorted(result.keys()):
+                    tf.logging.info("  %s = %s", key, str(result[key]))
+                    writer.write("%s = %s\n" % (key, str(result[key])))
+
+        if FLAGS.infinite_eval:
+            while True:
+                run_eval()
+        else:
+            run_eval()
 
     if FLAGS.do_export:
         feature_spec = {
