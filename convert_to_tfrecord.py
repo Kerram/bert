@@ -83,11 +83,7 @@ class InputFeatures(object):
     def __init__(
         self,
         goal_input_ids,
-        goal_input_mask,
-        goal_segment_ids,
         thm_input_ids,
-        thm_input_mask,
-        thm_segment_ids,
         tac_id,
         is_negative,
         goal_str,
@@ -96,11 +92,7 @@ class InputFeatures(object):
     ):
 
         self.goal_input_ids = goal_input_ids
-        self.goal_input_mask = goal_input_mask
-        self.goal_segment_ids = goal_segment_ids
         self.thm_input_ids = thm_input_ids
-        self.thm_input_mask = thm_input_mask
-        self.thm_segment_ids = thm_segment_ids
         self.tac_id = tac_id
         self.is_negative = is_negative
         self.is_real_example = is_real_example
@@ -188,27 +180,19 @@ class DeepholProcessor(DataProcessor):
 
 
 def convert_tokens(tokens, tokenizer, max_seq_length):
-    res = []
-    segment_ids = []
-    res.append("[CLS]")
-    segment_ids.append(0)
+    res = ["[CLS]"]
 
     for token in tokens:
         res.append(token)
-        segment_ids.append(0)
 
     res.append("[SEP]")
-    segment_ids.append(0)
 
     input_ids = tokenizer.convert_tokens_to_ids(res)
-    input_mask = [1] * len(input_ids)
 
     while len(input_ids) < max_seq_length:
         input_ids.append(0)
-        input_mask.append(0)
-        segment_ids.append(0)
 
-    return res, input_ids, input_mask, segment_ids
+    return res, input_ids
 
 
 def convert_single_example(
@@ -219,11 +203,7 @@ def convert_single_example(
     if isinstance(example, PaddingInputExample):
         return InputFeatures(
             goal_input_ids=[0] * max_seq_length,
-            goal_input_mask=[0] * max_seq_length,
-            goal_segment_ids=[0] * max_seq_length,
             thm_input_ids=[0] * max_seq_length,
-            thm_input_mask=[0] * max_seq_length,
-            thm_segment_ids=[0] * max_seq_length,
             tac_id=0,
             is_negative=True,
             is_real_example=False,
@@ -248,19 +228,15 @@ def convert_single_example(
     if len(t_tokens) > max_seq_length - 2:
         t_tokens = t_tokens[0 : (max_seq_length - 2)]
 
-    (goal_tokens, goal_input_ids, goal_input_mask, goal_segment_ids) = convert_tokens(
+    (goal_tokens, goal_input_ids) = convert_tokens(
         g_tokens, tokenizer, max_seq_length
     )
-    (thm_tokens, thm_input_ids, thm_input_mask, thm_segment_ids) = convert_tokens(
+    (thm_tokens, thm_input_ids) = convert_tokens(
         t_tokens, tokenizer, max_seq_length
     )
 
     assert len(goal_input_ids) == max_seq_length
-    assert len(goal_input_mask) == max_seq_length
-    assert len(goal_segment_ids) == max_seq_length
     assert len(thm_input_ids) == max_seq_length
-    assert len(thm_input_mask) == max_seq_length
-    assert len(thm_segment_ids) == max_seq_length
 
     tac_id = tac_label_map[example.tac_id]
     is_negative = is_negative_label_map[example.is_negative]
@@ -280,28 +256,12 @@ def convert_single_example(
             "goal_input_ids: %s" % " ".join([str(x) for x in goal_input_ids])
         )
         tf.logging.info("thm_input_ids: %s" % " ".join([str(x) for x in thm_input_ids]))
-        tf.logging.info(
-            "goal_input_mask: %s" % " ".join([str(x) for x in goal_input_mask])
-        )
-        tf.logging.info(
-            "thm_input_mask: %s" % " ".join([str(x) for x in thm_input_mask])
-        )
-        tf.logging.info(
-            "goal_segment_ids: %s" % " ".join([str(x) for x in goal_segment_ids])
-        )
-        tf.logging.info(
-            "thm_segment_ids: %s" % " ".join([str(x) for x in thm_segment_ids])
-        )
         tf.logging.info("tac_id: %d" % (tac_id))
         tf.logging.info("is_negative: %s" % (example.is_negative))
 
     feature = InputFeatures(
         goal_input_ids=goal_input_ids,
-        goal_input_mask=goal_input_mask,
-        goal_segment_ids=goal_segment_ids,
         thm_input_ids=thm_input_ids,
-        thm_input_mask=thm_input_mask,
-        thm_segment_ids=thm_segment_ids,
         tac_id=tac_id,
         is_negative=is_negative,
         is_real_example=True,
@@ -338,11 +298,7 @@ def file_based_convert_examples_to_features(
 
         features = collections.OrderedDict()
         features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
-        features["goal_input_mask"] = create_int_feature(feature.goal_input_mask)
-        features["goal_segment_ids"] = create_int_feature(feature.goal_segment_ids)
         features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
-        features["thm_input_mask"] = create_int_feature(feature.thm_input_mask)
-        features["thm_segment_ids"] = create_int_feature(feature.thm_segment_ids)
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
@@ -379,11 +335,7 @@ def test_set_convert_examples_to_features(
 
         features = collections.OrderedDict()
         features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
-        features["goal_input_mask"] = create_int_feature(feature.goal_input_mask)
-        features["goal_segment_ids"] = create_int_feature(feature.goal_segment_ids)
         features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
-        features["thm_input_mask"] = create_int_feature(feature.thm_input_mask)
-        features["thm_segment_ids"] = create_int_feature(feature.thm_segment_ids)
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])

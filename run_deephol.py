@@ -35,9 +35,10 @@ flags.DEFINE_string(
 
 flags.DEFINE_integer(
     "max_seq_length",
-    1000,
-    "The maximum total input sequence length after WordPiece tokenization. "
-    "Sequences longer than this will be truncated.",
+    512,
+    "The maximum total input sequence length after tokenization. "
+    "Sequences longer than this will be truncated, and sequences shorter "
+    "than this will be padded (not in exported model).",
 )
 
 flags.DEFINE_bool("do_train", True, "Whether to run training.")
@@ -123,11 +124,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
 
     name_to_features = {
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "thm_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
@@ -178,11 +175,7 @@ def build_predict_fake_input_fn(input_file, seq_length, drop_remainder):
 
     name_to_features = {
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "thm_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
