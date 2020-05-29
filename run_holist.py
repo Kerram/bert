@@ -76,6 +76,9 @@ def reset(num_instances, exp_name, holist_data_mount):
     os.system("sudo rm -rf %s/logs/%s" % (holist_data_mount, exp_name))
     os.system("sudo rm -rf %s/prooflogs/%s" % (holist_data_mount, exp_name))
 
+    os.system("mkdir %s/logs/%s" % (holist_data_mount, exp_name))
+    os.system("mkdir %s/prooflogs/%s" % (holist_data_mount, exp_name))
+
     for i in range(num_instances):
         os.system("docker stop holist%d && docker rm holist%d && docker network rm holist_net%d" % (i, i, i))
 
