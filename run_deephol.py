@@ -269,20 +269,6 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
 
     tf.add_to_collection('tactic_net', goal_net)
 
-    # Adding 3 dense layers with dropout like in deephol
-    # with tf.variable_scope("loss"):
-    if is_training:
-        goal_net = tf.nn.dropout(goal_net, rate=(1 - 0.7))
-    goal_net = tf.layers.dense(
-        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense1"
-    )
-
-    if is_training:
-        goal_net = tf.nn.dropout(goal_net, rate=(1 - 0.7))
-    goal_net = tf.layers.dense(
-        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense2"
-    )
-
     if is_training:
         goal_net = tf.nn.dropout(goal_net, rate=(1 - 0.7))
     tac_logits = tf.layers.dense(
@@ -305,20 +291,6 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
     hidden_size = goal_net.shape[-1].value
     # [batch_size, 3 * hidden_size]
     net = tf.concat([goal_net, thm_net, goal_net * thm_net], -1)
-
-    # Adding 3 dense layers with dropout like in deephol
-    # with tf.variable_scope("loss"):
-    if is_training:
-        net = tf.nn.dropout(net, rate=(1 - 0.7))
-    net = tf.layers.dense(
-        net, hidden_size, activation=tf.nn.relu, name="par_dense1"
-    )
-
-    if is_training:
-        net = tf.nn.dropout(net, rate=(1 - 0.7))
-    net = tf.layers.dense(
-        net, hidden_size, activation=tf.nn.relu, name="par_dense2"
-    )
 
     if is_training:
         net = tf.nn.dropout(net, rate=(1 - 0.7))
