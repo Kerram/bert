@@ -389,7 +389,7 @@ def create_model(
             goal_net, thm_net, is_training, is_negative_labels, is_real_example
         )
 
-    total_loss = (0.5 * par_loss) + tac_loss
+    total_loss = par_loss + tac_loss
 
     return (
         total_loss,
@@ -672,7 +672,7 @@ def model_fn_builder(
                     values=neg_guess, weights=is_real_example * (is_negative)
                 )
 
-                tot_loss = (0.5 * par_loss) + tac_loss
+                tot_loss = par_loss + tac_loss
                 tot_loss = tf.metrics.mean(tot_loss)
 
                 tac_loss = tf.metrics.mean(tac_loss)
