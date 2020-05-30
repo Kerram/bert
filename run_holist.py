@@ -72,7 +72,13 @@ def get_fingerprints(database, split, library):
             if is_thm_included(thm, split, libraries)]
 
 
-def reset(num_instances):
+def reset(num_instances, exp_name, holist_data_mount):
+    os.system("sudo rm -rf %s/logs/%s" % (holist_data_mount, exp_name))
+    os.system("sudo rm -rf %s/prooflogs/%s" % (holist_data_mount, exp_name))
+
+    os.system("mkdir %s/logs/%s" % (holist_data_mount, exp_name))
+    os.system("mkdir %s/prooflogs/%s" % (holist_data_mount, exp_name))
+
     for i in range(num_instances):
         os.system("docker stop holist%d && docker rm holist%d && docker network rm holist_net%d" % (i, i, i))
 
@@ -96,7 +102,7 @@ def compute_embeddings(holist_data_mount):
     os.system(command)
 
 
-def prove(fingerprints, num_instances, holist_data_mount):
+def prove(fingerprints, num_instances, holist_data_mount, exp_name):
     print("INFO: Proving! You will find logs for each instance in logs directory.")
 
     batches = [[] for _ in range(num_instances)]
@@ -118,9 +124,9 @@ def prove(fingerprints, num_instances, holist_data_mount):
 
         command = 'docker run -it --network=holist_net%d -v %s:/data gcr.io/deepmath/deephol ' \
                   '--prover_options=/data/configuration/prover_options.textpb ' \
-                  '--output="/data/prooflogs/prooflog%d.textpbs" --proof_assistant_server_address=holist%d:2000 ' \
-                  '--tasks_by_fingerprint="%s" > %s/logs/holight_log%d.out' \
-                  % (num, data_mount, num, num, theorems_str, data_mount, num)
+                  '--output="/data/prooflogs/%s/prooflog%d.textpbs" --proof_assistant_server_address=holist%d:2000 ' \
+                  '--tasks_by_fingerprint="%s" > %s/logs/%s/holight_log%d.out' \
+                  % (num, data_mount, exp_name, num, num, theorems_str, data_mount, exp_name, num)
 
         return command
 
@@ -129,12 +135,12 @@ def prove(fingerprints, num_instances, holist_data_mount):
         pool.map(os.system, commands)
 
 
-def write_summary(num_instances, holist_data_mount):
+def write_summary(num_instances, holist_data_mount, exp_name):
     print("INFO: Aggregating summaries from prooflogs\n\n\n")
 
     prooflogs = ""
     for i in range(num_instances):
-        prooflogs += "/data/prooflogs/prooflog%d.textpbs," % (i)
+        prooflogs += "/data/prooflogs/%s/prooflog%d.textpbs," % (exp_name, i)
     prooflogs = prooflogs[:-1]
 
     command = 'docker run -it --network=holist_net0 -v %s:/data gcr.io/deepmath/deephol ' \
@@ -161,8 +167,12 @@ def main():
                                                     "This path will be mounted in HOList docker under /data.")
     parser.add_argument("--only_summary", type=bool, default=False,
                         help="Specify whether you want to calculate summary of proofs done from prooflogs or prove selected theorems.")
+    parser.add_argument("--exp_name", type=str, help="Name of the experiment.")
 
     args = parser.parse_args()
+
+    if args.exp_name is None:
+        raise ValueError("You must provide experiment name!")
 
     if args.database_path is None:
         raise ValueError("You must provide theorem database path!")
@@ -178,14 +188,14 @@ def main():
 
     print("Found %d theorems to prove." % (len(fingerprints),))
 
-    reset(args.num_instances)
+    reset(args.num_instances, args.exp_name, args.holist_data_mount)
     run_HOLights(args.num_instances)
 
     if not args.only_summary:
         compute_embeddings(args.holist_data_mount)
-        prove(fingerprints, args.num_instances, args.holist_data_mount)
+        prove(fingerprints, args.num_instances, args.holist_data_mount, args.exp_name)
 
-    write_summary(args.num_instances, args.holist_data_mount)
+    write_summary(args.num_instances, args.holist_data_mount, args.exp_name)
 
 
 if __name__ == "__main__":
