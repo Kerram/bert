@@ -389,7 +389,7 @@ def create_model(
             goal_net, thm_net, is_training, is_negative_labels, is_real_example
         )
 
-    total_loss = (0.5 * par_loss) + tac_loss
+    total_loss = (0.5 * par_loss) + (2 * tac_loss)
 
     return (
         total_loss,
@@ -642,6 +642,7 @@ def model_fn_builder(
                 is_real_example,
                 tac_loss,
                 par_loss,
+                real_total_loss,
             ):
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
@@ -672,7 +673,7 @@ def model_fn_builder(
                     values=neg_guess, weights=is_real_example * (is_negative)
                 )
 
-                tot_loss = (0.5 * par_loss) + tac_loss
+                tot_loss = (0.5 * par_loss) + (2 * tac_loss)
                 tot_loss = tf.metrics.mean(tot_loss)
 
                 tac_loss = tf.metrics.mean(tac_loss)
@@ -688,6 +689,7 @@ def model_fn_builder(
                     "total_loss": tot_loss,
                     "chosen_tactic (mean)": chosen_tac,
                     "chosen_tactic (acc)": chosen_tac_acc,
+                    "total_loss(real)": tf.metrics.mean(real_total_loss),
                 }
 
                 return res
@@ -702,6 +704,7 @@ def model_fn_builder(
                     is_real_example,
                     tf.ones(params['batch_size']) * tac_loss,
                     tf.ones(params['batch_size']) * par_loss,
+                    tf.ones(params['batch_size']) * total_loss,
                 ],
             )
 
