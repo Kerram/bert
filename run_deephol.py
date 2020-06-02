@@ -179,7 +179,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
         d = tf.data.TFRecordDataset(input_file)
         if is_training:
             d = d.repeat()
-            d = d.shuffle(buffer_size=100)
+            d = d.shuffle(buffer_size=6250)
 
         d = d.apply(
             tf.contrib.data.map_and_batch(
@@ -807,10 +807,7 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
-        train_examples_count = count_records(FLAGS.train_file)
-        num_train_steps = int(
-            train_examples_count / FLAGS.train_batch_size * FLAGS.num_train_epochs
-        )
+        num_train_steps = 90394
         num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
 
     model_fn = model_fn_builder(
