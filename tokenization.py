@@ -239,8 +239,8 @@ class TensorWorkSplitter(object):
     tm = tf.strings.join(['[CLS] ', tf.strings.strip(tm), ' [SEP]'])
     tf.logging.info("  name = %s, shape = %s" % ("tm", tm.shape))
     # Remove parentheses - they can be recovered for S-expressions.
-    #tm = tf.strings.regex_replace(tm, r'\(', ' ')
-    #tm = tf.strings.regex_replace(tm, r'\)', ' ')
+    tm = tf.strings.regex_replace(tm, r'\(', ' ')
+    tm = tf.strings.regex_replace(tm, r'\)', ' ')
     words = tf.strings.split(tm)
     tf.logging.info("  name = %s, shape = %s" % ("words", words.shape))
     # Truncate long terms.
