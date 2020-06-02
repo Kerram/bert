@@ -457,6 +457,7 @@ def update_features_using_deephol(features, max_seq_length):
         tf.add_to_collection('goal_string', features['goal_str'])
 
         goal = tensor_tokenizer.tokenize(features['goal_str'], max_seq_length)
+        goal = _pad_up_to(goal, max_seq_length, 1)
 
         features['goal_input_ids'] = goal
 
@@ -464,6 +465,7 @@ def update_features_using_deephol(features, max_seq_length):
         tf.add_to_collection('thm_string', features['thm_str'])
 
         thm = tensor_tokenizer.tokenize(features['thm_str'], max_seq_length)
+        thm = _pad_up_to(thm, max_seq_length, 1)
 
         features['thm_input_ids'] = thm
 
@@ -708,10 +710,7 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
-        train_examples_count = count_records(FLAGS.train_file)
-        num_train_steps = int(
-            train_examples_count / FLAGS.train_batch_size * FLAGS.num_train_epochs
-        )
+        num_train_steps = 3330000
 
     model_fn = model_fn_builder(
         num_tac_labels=len(tac_labels),
