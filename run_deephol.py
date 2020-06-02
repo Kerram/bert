@@ -70,7 +70,7 @@ flags.DEFINE_bool(
 
 flags.DEFINE_string("test_file", None, "Path to test tf_record file. It is used to export model.")
 
-flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
+flags.DEFINE_integer("train_batch_size", 16, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
 
