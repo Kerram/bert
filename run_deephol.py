@@ -17,6 +17,12 @@ flags = tf.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
+    "init_checkpoint",
+    None,
+    "Checkpoit for export.",
+)
+
+flags.DEFINE_string(
     "data_dir",
     None,
     "The input data dir. Should contain the .tsv files (or other data files) "
@@ -477,6 +483,7 @@ def model_fn_builder(
     max_seq_length,
     do_export,
     vocab_size,
+    init_checkpoint,
 ):
     def model_fn(features, labels, mode, params):
 
@@ -524,6 +531,26 @@ def model_fn_builder(
         scaffold_fn = None
         output_spec = None
 
+        if init_checkpoint:
+            if use_tpu:
+                def tpu_scaffold():
+                    return tf.train.Scaffold()
+
+                scaffold_fn = tpu_scaffold
+
+            elif do_export:
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "encoder/*")
+
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "classifier/*")
+
+                tf.train.warm_start(
+                    init_checkpoint,
+                    "pairwise_scorer/*")
+
         if mode == tf.estimator.ModeKeys.TRAIN:
             global_step = tf.train.get_or_create_global_step()
             lr = tf.train.exponential_decay(
@@ -535,9 +562,6 @@ def model_fn_builder(
             opt = tf.train.AdamOptimizer(lr)
             if use_tpu:
                 opt = tf.contrib.tpu.CrossShardOptimizer(opt)
-
-            def scaffold_fn():
-                return tf.train.Scaffold()
 
             train_op = opt.minimize(total_loss, global_step=global_step)
 
