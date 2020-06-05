@@ -270,7 +270,7 @@ def goal_encoding(
         # output shape is [batch_size, hidden_size]
     goal_net = tf.reduce_max(goal_net, [1, 2])
 
-    tf.add_to_collection(goal_net, goal_net)
+    tf.add_to_collection('goal_net', goal_net)
 
     return goal_net
 
