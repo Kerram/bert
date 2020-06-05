@@ -19,7 +19,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string(
     "init_checkpoint",
     None,
-    "Checkpoit for export.",
+    "Checkpoint for export.",
 )
 
 flags.DEFINE_string(
@@ -743,6 +743,7 @@ def main(_):
         max_seq_length=FLAGS.max_seq_length,
         do_export=FLAGS.do_export,
         vocab_size=2000,
+        init_checkpoint=FLAGS.init_checkpoint,
     )
 
     estimator = tf.contrib.tpu.TPUEstimator(
