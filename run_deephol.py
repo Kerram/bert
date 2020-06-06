@@ -734,7 +734,7 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
-        num_train_steps = 3330000
+        num_train_steps = 333000
 
     model_fn = model_fn_builder(
         num_tac_labels=len(tac_labels),
