@@ -807,6 +807,7 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
+        train_examples_count = count_records(FLAGS.train_file)
         num_train_steps = int(
             train_examples_count / FLAGS.train_batch_size * FLAGS.num_train_epochs
         )
