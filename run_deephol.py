@@ -61,7 +61,7 @@ flags.DEFINE_bool(
 
 flags.DEFINE_string("test_file", None, "Path to test tf_record file. It is used to export model.")
 
-flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
+flags.DEFINE_integer("train_batch_size", 8, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
 
@@ -76,7 +76,7 @@ flags.DEFINE_integer(
 )
 
 flags.DEFINE_integer(
-    "iterations_per_loop", 1000, "How many steps to make in each estimator call."
+    "iterations_per_loop", 100, "How many steps to make in each estimator call."
 )
 
 flags.DEFINE_bool("use_tpu", True, "Whether to use TPU or GPU/CPU.")
@@ -734,7 +734,9 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
-        num_train_steps = 333000
+        num_train_steps = int(
+            train_examples_count / FLAGS.train_batch_size * FLAGS.num_train_epochs
+        )
 
     model_fn = model_fn_builder(
         num_tac_labels=len(tac_labels),
