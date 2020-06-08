@@ -358,7 +358,7 @@ def file_based_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
-        features["weight"] = create_float_feature([feature.weight])
+        features["weight"] = create_float_feature([float(feature.weight)])
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
