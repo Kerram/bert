@@ -1,29 +1,42 @@
 import pandas as pd
 
+# Enhance function by the courtesy of Filip Mikina.
+def enhance(df):
+    last_row_ind = 0
+    seen_false = False
+    seen_true = False
+    for ind, row in df.iterrows():
+        if ind % 10000 == 0:
+            print("DONE", ind)
 
-train_df = pd.read_csv('test.csv', sep=',').head(1)
-train_df = train_df.replace(['\(', '\)'], ['', ''], regex=True)
+        if not row['is_negative']:
+            if seen_true and seen_false:
+                seen_false = False
+                seen_true = False
 
-counter = {}
+                if (ind - last_row_ind) % 8 != 0:
+                    print("ERROR", ind)
 
-for index, row in train_df.iterrows():
-    pair = (row.goal, row.tactic_id)
-    if pair not in counter:
-        counter[pair] = 1
-    else:
-        counter[pair] += 1
+                df.loc[last_row_ind:(ind - 1), 'weight'] = 1 / ((ind - last_row_ind) // 8)
+                last_row_ind = ind
 
-    if index % 10000 == 0:
-        print("DONE %d" % (index,))
+            seen_false = True
+        else:
+            seen_true = True
 
-weights = []
-for index, row in train_df.iterrows():
-    pair = (row.goal, row.tactic_id)
-    weights.append(1/(counter[pair] // 8))
+    # Update last
+    ind = len(df)
 
-    if index % 10000 == 0:
-        print("DONE %d" % (index,))
+    if (ind - last_row_ind) % 8 != 0:
+        print("ERROR", ind)
 
-train_df = train_df.assign(weight=pd.Series(weights).values)
-train_df = train_df.sample(frac=1).reset_index(drop=True)
-train_df.to_csv('new_test.tsv', index=False, sep='\t')
+    df.loc[last_row_ind:(ind - 1), 'weight'] = 1 / ((ind - last_row_ind) // 8)
+    return df
+
+
+df = pd.read_csv('test.csv', sep=',').head(8)
+df = enhance(df)
+df = df.replace(['\(', '\)'], ['', ''], regex=True)
+
+df = df.sample(frac=1).reset_index(drop=True)
+df.to_csv('new_test.tsv', index=False, sep='\t')
