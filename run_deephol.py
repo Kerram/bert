@@ -338,7 +338,7 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
         multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
         logits=par_logits,
         reduction=tf.losses.Reduction.SUM,
-        weights=weight)
+        weights=tf.expand_dims(weight, 1))
 
     return ce_loss, par_logits
 
