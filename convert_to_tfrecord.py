@@ -404,7 +404,7 @@ def test_set_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
-        features["weight"] = create_float_feature([feature.weight])
+        features["weight"] = create_float_feature([float(feature.weight)])
         features["goal_str"] = tf.train.Feature(bytes_list=tf.train.BytesList(
             value=[bytes(feature.goal_str, encoding="utf-8")]))
         features['thm_str'] = tf.train.Feature(bytes_list=tf.train.BytesList(
