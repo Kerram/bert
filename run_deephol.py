@@ -534,6 +534,18 @@ def model_fn_builder(
         if init_checkpoint:
             if use_tpu:
                 def tpu_scaffold():
+                    tf.train.warm_start(
+                        init_checkpoint,
+                        "encoder/*")
+
+                    tf.train.warm_start(
+                        init_checkpoint,
+                        "classifier/*")
+
+                    tf.train.warm_start(
+                        init_checkpoint,
+                        "pairwise_scorer/*")
+
                     return tf.train.Scaffold()
 
                 scaffold_fn = tpu_scaffold
