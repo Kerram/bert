@@ -34,7 +34,7 @@ def enhance(df):
     return df
 
 
-df = pd.read_csv('valid.csv', sep=',').head(8)
+df = pd.read_csv('valid.csv', sep=',')
 df = enhance(df)
 df = df.replace(['\(', '\)'], ['', ''], regex=True)
 
