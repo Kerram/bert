@@ -892,7 +892,7 @@ def main(_):
             )
             tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
 
-            result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
+            result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps, name='weighted_metrics')
 
             output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
             with tf.gfile.GFile(output_eval_file, "w") as writer:
