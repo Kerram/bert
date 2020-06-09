@@ -648,6 +648,7 @@ def model_fn_builder(
                 is_real_example,
                 tac_loss,
                 par_loss,
+                weight,
             ):
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
@@ -658,13 +659,13 @@ def model_fn_builder(
 
                 # Tactic accuracy
                 tac_accuracy = tf.metrics.accuracy(
-                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example * (1 - is_negative)
+                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example * (1 - is_negative) * weight
                 )
 
                 # Top 5 tactics accuracy
                 topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))
                 tac_topk_accuracy = tf.metrics.mean(
-                    values=topk_preds, weights=is_real_example * (1 - is_negative)
+                    values=topk_preds, weights=is_real_example * (1 - is_negative) * weight
                 )
 
                 par_pred = tf.sigmoid(par_logits)
@@ -672,10 +673,10 @@ def model_fn_builder(
                 neg_guess = tf.to_float(tf.less(par_pred, 0.5))
 
                 pos_acc = tf.metrics.mean(
-                    values=pos_guess, weights=is_real_example * (1 - is_negative)
+                    values=pos_guess, weights=is_real_example * (1 - is_negative) * weight
                 )
                 neg_acc = tf.metrics.mean(
-                    values=neg_guess, weights=is_real_example * (is_negative)
+                    values=neg_guess, weights=is_real_example * (is_negative) * weight
                 )
 
                 tot_loss = (0.5 * par_loss) + tac_loss
@@ -708,6 +709,7 @@ def model_fn_builder(
                     is_real_example,
                     tf.ones(params['batch_size']) * tac_loss,
                     tf.ones(params['batch_size']) * par_loss,
+                    weight,
                 ],
             )
 
