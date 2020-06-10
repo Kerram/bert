@@ -10,6 +10,7 @@ import os
 import modeling
 import optimization
 import tokenization
+import extractor
 import tensorflow as tf
 import sys
 
@@ -76,7 +77,7 @@ flags.DEFINE_bool(
 
 flags.DEFINE_string("test_file", None, "Path to test tf_record file. It is used to export model.")
 
-flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
+flags.DEFINE_integer("train_batch_size", 8, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
 
@@ -147,6 +148,19 @@ def get_tac_labels():
     return [str(i) for i in range(41)]
 
 
+def parse_features(example, max_seq_length):
+    random_theorem = tf.random_uniform([],
+                                        minval=0,
+                                        maxval=example['number_of_theorems'],
+                                        dtype=tf.int32)
+
+    example['thm_input_ids'] = tf.slice(example['thm_input_ids'], [random_theorem * max_seq_length], [max_seq_length])
+    example['thm_input_mask'] = tf.slice(example['thm_input_mask'], [random_theorem * max_seq_length], [max_seq_length])
+    example['thm_segment_ids'] = tf.slice(example['thm_segment_ids'], [random_theorem * max_seq_length], [max_seq_length])
+
+    return example
+
+
 def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remainder, max_number_of_therems):
     """Creates an `input_fn` closure to be passed to TPUEstimator."""
 
@@ -154,12 +168,13 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thms_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
-        "thms_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
-        "thms_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
         "number_of_theorems": tf.FixedLenFeature([], tf.int64),
+        "negatives": tf.FixedLenFeature([seq_length * 7 * 5], tf.int64),
     }
 
     def _decode_record(record, name_to_features):
@@ -187,9 +202,11 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
             d = d.repeat()
             d = d.shuffle(buffer_size=100)
 
+        d = d.map(lambda record: _decode_record(record, name_to_features))
+
         d = d.apply(
             tf.contrib.data.map_and_batch(
-                lambda record: _decode_record(record, name_to_features),
+                lambda example: parse_features(example, seq_length),
                 batch_size=batch_size,
                 drop_remainder=drop_remainder,
             )
@@ -209,14 +226,15 @@ def build_predict_fake_input_fn(input_file, seq_length, drop_remainder, max_numb
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thms_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
-        "thms_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
-        "thms_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thm_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
         "number_of_theorems": tf.FixedLenFeature([], tf.int64),
         'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
         'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
+        "negatives": tf.FixedLenFeature([seq_length * 7 * 5], tf.int64),
     }
 
     def _decode_record(record, name_to_features):
@@ -230,10 +248,11 @@ def build_predict_fake_input_fn(input_file, seq_length, drop_remainder, max_numb
         batch_size = params["batch_size"]
 
         d = tf.data.TFRecordDataset(input_file)
+        d = d.map(lambda record: _decode_record(record, name_to_features))
 
         d = d.apply(
             tf.contrib.data.map_and_batch(
-                lambda record: _decode_record(record, name_to_features),
+                lambda example: parse_features(example, seq_length),
                 batch_size=batch_size,
                 drop_remainder=drop_remainder,
             )
@@ -266,6 +285,15 @@ def create_encoding(
         output = model.get_pooled_output()
 
         tf.add_to_collection(name + '_net', output)
+
+        if name == 'goal':
+            # The second goal_net in the collection contains duplicates, aligning with the
+            # number of positive and negative theorems. The predictor will feed this value
+            # in to compute the score of goal/theorem pairs.
+            # output shape: [goal_tiling_size * batch_size, hidden_size]
+            goal_tiling_size = 8
+            output = tf.tile(output, [goal_tiling_size, 1])
+            tf.add_to_collection('goal_net', output)
 
         return output
 
@@ -306,11 +334,11 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     return log_prob_tactic, tac_logits, tac_probabilities
 
 
-def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_example):
+def pairwise_scorer(goal_net, thm_net, is_training, thm_label, is_real_example):
     # concat goal_net, thm_net and their dot product as in deephol
     hidden_size = goal_net.shape[-1].value
     # [batch_size, 3 * hidden_size]
-    net = tf.concat([goal_net, thm_net, goal_net * thm_net], -1)
+    net = tf.concat([goal_net, thm_net, tf.multiply(goal_net, thm_net)], -1)
 
     # Adding 3 dense layers with dropout like in deephol
     # with tf.variable_scope("loss"):
@@ -339,7 +367,7 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
 
     # scalar
     ce_loss = tf.losses.sigmoid_cross_entropy(
-        multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
+        multi_class_labels=tf.expand_dims(thm_label * tf.to_int32(is_real_example), 1),
         logits=par_logits,
         reduction=tf.losses.Reduction.SUM)
 
@@ -357,7 +385,7 @@ def create_model(
     use_one_hot_embeddings,
     tac_ids,
     num_tac_labels,
-    is_negative_labels,
+    thm_label,
     is_training,
     is_real_example,
 ):
@@ -392,7 +420,7 @@ def create_model(
 
     with tf.variable_scope("pairwise_scorer"):
         (par_loss, par_logits) = pairwise_scorer(
-            goal_net, thm_net, is_training, is_negative_labels, is_real_example
+            goal_net, thm_net, is_training, thm_label, is_real_example
         )
 
     total_loss = (0.5 * par_loss) + tac_loss
@@ -504,6 +532,7 @@ def model_fn_builder(
     use_one_hot_embeddings,
     max_seq_length,
     do_export,
+    steps_per_epoch,
 ):
     def model_fn(features, labels, mode, params):
 
@@ -514,7 +543,7 @@ def model_fn_builder(
         if do_export:  # HOList has different expectation towards input features.
             update_features_using_deephol(features, max_seq_length)
         else:
-            update_features_on_TPU(features, max_seq_length)
+            features = extractor.extract(features, max_seq_length, steps_per_epoch, params['batch_size'])
 
         tf.logging.info("*** Features after deephol ***")
         for name in sorted(features.keys()):
@@ -527,7 +556,8 @@ def model_fn_builder(
         thm_input_mask = features["thm_input_mask"]
         thm_segment_ids = features["thm_segment_ids"]
         tac_ids = features["tac_ids"]
-        is_negative = features["is_negative"]
+        thm_label = features['thm_label']
+
 
         if "is_real_example" in features:
             is_real_example = tf.cast(features["is_real_example"], dtype=tf.float32)
@@ -554,7 +584,7 @@ def model_fn_builder(
             use_one_hot_embeddings,
             tac_ids,
             num_tac_labels,
-            is_negative,
+            thm_label,
             is_training,
             is_real_example,
         )
@@ -646,38 +676,39 @@ def model_fn_builder(
                 tac_logits,
                 par_logits,
                 tac_ids,
-                is_negative,
                 is_real_example,
                 tac_loss,
                 par_loss,
+                thm_label,
             ):
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
                 chosen_tac = tf.metrics.mean(tac_predictions)
                 chosen_tac_acc = tf.metrics.accuracy(labels=tac_predictions, predictions=tf.ones(tf.shape(tac_predictions))*5.0)
 
-                is_negative = tf.to_float(is_negative)
-
                 # Tactic accuracy
                 tac_accuracy = tf.metrics.accuracy(
-                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example * (1 - is_negative)
+                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example
                 )
 
                 # Top 5 tactics accuracy
                 topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))
                 tac_topk_accuracy = tf.metrics.mean(
-                    values=topk_preds, weights=is_real_example * (1 - is_negative)
+                    values=topk_preds, weights=is_real_example
                 )
 
-                par_pred = tf.sigmoid(par_logits)
-                pos_guess = tf.to_float(tf.greater(par_pred, 0.5))
-                neg_guess = tf.to_float(tf.less(par_pred, 0.5))
+                pos_logits = tf.boolean_mask(tf.squeeze(par_logits), thm_label)
+                neg_logits = tf.boolean_mask(tf.squeeze(par_logits), 1 - thm_label)
+                pos_pred = tf.sigmoid(pos_logits)
+                neg_pred = tf.sigmoid(neg_logits)
+                pos_guess = tf.to_float(tf.greater(pos_pred, 0.5))
+                neg_guess = tf.to_float(tf.less(neg_pred, 0.5))
 
                 pos_acc = tf.metrics.mean(
-                    values=pos_guess, weights=is_real_example * (1 - is_negative)
+                    values=pos_guess, weights=is_real_example
                 )
                 neg_acc = tf.metrics.mean(
-                    values=neg_guess, weights=is_real_example * (is_negative)
+                    values=neg_guess, weights=is_real_example
                 )
 
                 tot_loss = (0.5 * par_loss) + tac_loss
@@ -706,7 +737,7 @@ def model_fn_builder(
                     tac_logits,
                     par_logits,
                     tac_ids,
-                    is_negative,
+                    thm_label,
                     is_real_example,
                     tf.ones(params['batch_size']) * tac_loss,
                     tf.ones(params['batch_size']) * par_loss,
@@ -832,6 +863,7 @@ def main(_):
         use_one_hot_embeddings=FLAGS.use_tpu,
         max_seq_length=FLAGS.max_seq_length,
         do_export=FLAGS.do_export,
+        steps_per_epoch=int(train_examples_count / FLAGS.train_batch_size),
     )
 
     estimator = tf.contrib.tpu.TPUEstimator(
@@ -914,9 +946,9 @@ def main(_):
             "goal_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
             "goal_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
             "goal_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thms_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
-            "thms_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
-            "thms_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
+            "thm_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
+            "thm_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
+            "thm_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
             "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
             "number_of_theorems": tf.placeholder(dtype=tf.int32, shape=[None]),

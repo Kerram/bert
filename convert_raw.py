@@ -10,6 +10,7 @@ import collections
 import tensorflow as tf
 import sys
 import json
+import random
 
 import tokenization
 
@@ -19,6 +20,10 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     "data_path", None, "Path to input file. It should be in json format.",
+)
+
+flags.DEFINE_string(
+    "theorems_path", None, "Path to a file with all theorems."
 )
 
 flags.DEFINE_string(
@@ -60,7 +65,7 @@ flags.DEFINE_integer(
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, goal, thms, tac_id=None):
+    def __init__(self, guid, goal, thms, my_negatives, tac_id=None):
         """Constructs an InputExample.
 
     Args:
@@ -73,6 +78,7 @@ class InputExample(object):
         self.goal = goal
         self.thms = thms
         self.tac_id = tac_id
+        self.my_negatives = my_negatives
 
 
 class PaddingInputExample(object):
@@ -96,6 +102,7 @@ class InputFeatures(object):
         goal_str,
         thms_str,
         number_of_theorems,
+        negatives,
         is_real_example=True,
     ):
 
@@ -110,26 +117,60 @@ class InputFeatures(object):
         self.goal_str = goal_str
         self.thms_str = thms_str
         self.number_of_theorems = number_of_theorems
+        self.negatives = negatives
+
+
+def get_negatives(all_thms, no_negative, no_samples):
+    map(tokenization.convert_to_unicode, all_thms)
+
+    ans = []
+    index = 0
+    negatives = []
+    for _ in range(no_samples * no_negative):
+        if index == 0:
+            random.shuffle(all_thms)
+
+        negatives.append(all_thms[index])
+
+        index += 1
+        if index == len(all_thms):
+            index = 0
+
+        if len(negatives) == no_negative:
+            ans.append(negatives)
+            negatives = []
+
+    return ans
 
 
 class DeepholProcessor:
     """Processor for Deephol dataset"""
 
-    def get_examples(self, data_path, set_type):
+    def get_examples(self, data_path, set_type, theorems_path):
         with open(data_path, "r") as f:
             data = json.load(f)
 
         tf.logging.info("Dataset read successful!")
 
-        return self._create_examples(data, set_type)
+        return self._create_examples(data, set_type, theorems_path)
 
     def get_tac_labels(self):
         return [i for i in range(41)]
 
-    def _create_examples(self, data, set_type):
+    def _create_examples(self, data, set_type, theorems_path):
+        with open(theorems_path, "r") as f:
+            all = f.readlines()
+
+        all_thms = get_negatives(all, 7, 5 * len(data))
+
         examples = []
         for (i, sample) in enumerate(data):
             guid = "%s-%s" % (set_type, i)
+
+            my_negatives = []
+            for j in range(5):
+                my_negatives.append(all_thms[i + j * len(data)])
+
             if set_type == "test":
                 #  The values really don't matter, because we are using test set only as a hack to export a model.
                 goal = tokenization.convert_to_unicode(sample["goal"])
@@ -140,7 +181,7 @@ class DeepholProcessor:
                 thms = list(map(tokenization.convert_to_unicode, sample["thms"]))
                 tac_id = sample["tac_id"]
             examples.append(
-                InputExample(guid=guid, goal=goal, thms=thms, tac_id=tac_id,)
+                InputExample(guid=guid, goal=goal, thms=thms, tac_id=tac_id, my_negatives=my_negatives)
             )
         return examples
 
@@ -193,10 +234,16 @@ def convert_single_example(
             goal_str="",
             thms_str="",
             number_of_theorems=max_number_of_theorems,
+            negatives=[0] * max_seq_length * 7 * 5,
         )
 
     if len(example.thms) > max_number_of_theorems:
         example.thms = example.thms[:max_number_of_theorems]
+
+    if len(example.thms) == 0:
+        example.thms = [""]
+
+    number_of_theorems = len(example.thms)
 
     tac_label_map = {}
     for (i, label) in enumerate(tac_label_list):
@@ -248,11 +295,11 @@ def convert_single_example(
     assert len(thms_segment_ids) == max_number_of_theorems
 
     tac_id = tac_label_map[example.tac_id]
-    number_of_theorems = len(example.thms)
 
     if ex_index < 2:
         tf.logging.info("*** Example ***")
         tf.logging.info("guid: %s" % (example.guid))
+        tf.logging.info(example.my_negatives)
         tf.logging.info(
             "goal_tokens: %s"
             % " ".join([tokenization.printable_text(x) for x in goal_tokens])
@@ -282,6 +329,25 @@ def convert_single_example(
 
         tf.logging.info("tac_id: %d" % (tac_id,))
 
+    negatives = []
+    for epoch in example.my_negatives:
+        for negative in epoch:
+            neg_tokens = tokenizer.tokenize(negative)
+            if len(neg_tokens) > max_seq_length - 2:
+                neg_tokens = neg_tokens[0: (max_seq_length - 2)]
+
+            (_, negatives_ids, _, _) = convert_tokens(
+                neg_tokens, tokenizer, max_seq_length
+            )
+            assert len(negatives_ids) == max_seq_length
+
+            negatives += negatives_ids
+
+    assert len(goal_input_ids) == max_seq_length
+    assert len(goal_input_mask) == max_seq_length
+    assert len(goal_segment_ids) == max_seq_length
+    assert len(negatives) == max_seq_length * 7 * 5
+
     feature = InputFeatures(
         goal_input_ids=goal_input_ids,
         goal_input_mask=goal_input_mask,
@@ -294,6 +360,7 @@ def convert_single_example(
         goal_str=example.goal,
         thms_str=example.thms,
         number_of_theorems=number_of_theorems,
+        negatives=negatives,
     )
 
     return feature
@@ -337,6 +404,7 @@ def file_based_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
         features["number_of_theorems"] = create_int_feature([feature.number_of_theorems])
+        features['negatives'] = create_int_feature(feature.negatives)
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
@@ -382,6 +450,7 @@ def test_set_convert_examples_to_features(
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
         features["number_of_theorems"] = create_int_feature([feature.number_of_theorems])
+        features['negatives'] = create_int_feature(feature.negatives)
 
         features["goal_str"] = tf.train.Feature(
             bytes_list=tf.train.BytesList(
@@ -389,18 +458,11 @@ def test_set_convert_examples_to_features(
             )
         )
 
-        if len(feature.thms_str) == 0:
-            features["thm_str"] = tf.train.Feature(
-                bytes_list=tf.train.BytesList(
-                    value=[b""]
-                )
+        features["thm_str"] = tf.train.Feature(
+            bytes_list=tf.train.BytesList(
+                value=[bytes(feature.thms_str[0], encoding="utf-8")]
             )
-        else:
-            features["thm_str"] = tf.train.Feature(
-                bytes_list=tf.train.BytesList(
-                    value=[bytes(feature.thms_str[0], encoding="utf-8")]
-                )
-            )
+        )
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
@@ -413,7 +475,7 @@ def main(_):
     processor = DeepholProcessor()
     tokenizer = tokenization.LongestTokenizer(vocab=FLAGS.vocab_file)
 
-    examples = processor.get_examples(FLAGS.data_path, FLAGS.set_type)
+    examples = processor.get_examples(FLAGS.data_path, FLAGS.set_type, FLAGS.theorems_path)
 
     tac_labels = processor.get_tac_labels()
 
@@ -451,4 +513,5 @@ if __name__ == "__main__":
     flags.mark_flag_as_required("output_path")
     flags.mark_flag_as_required("set_type")
     flags.mark_flag_as_required("vocab_file")
+    flags.mark_flag_as_required('theorems_path')
     tf.app.run()
