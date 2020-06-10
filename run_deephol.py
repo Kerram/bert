@@ -570,7 +570,7 @@ def model_fn_builder(
             train_op = opt.minimize(loss, global_step=global_step)
 
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-                mode=mode, loss=total_loss, train_op=train_op, scaffold_fn=scaffold_fn,
+                mode=mode, loss=loss, train_op=train_op, scaffold_fn=scaffold_fn,
             )
 
         elif mode == tf.estimator.ModeKeys.EVAL:
@@ -630,7 +630,7 @@ def model_fn_builder(
                     "total_loss": tot_loss,
                     "chosen_tactic (mean)": chosen_tac,
                     "chosen_tactic (acc)": chosen_tac_acc,
-                    "loss": tf.metrics.mean(loss),
+                    "estimator_loss": tf.metrics.mean(loss),
                 }
 
                 return res
@@ -649,9 +649,10 @@ def model_fn_builder(
                 ],
             )
 
+            loss = tf.losses.get_total_loss()
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
                 mode=mode,
-                loss=total_loss,
+                loss=loss,
                 eval_metrics=eval_metrics,
                 scaffold_fn=scaffold_fn,
             )
