@@ -710,7 +710,6 @@ def model_fn_builder(
                 tac_logits,
                 par_logits,
                 tac_ids,
-                is_real_example,
                 tac_loss,
                 par_loss,
                 thm_label,
@@ -722,27 +721,27 @@ def model_fn_builder(
 
                 # Tactic accuracy
                 tac_accuracy = tf.metrics.accuracy(
-                    labels=tac_ids, predictions=tac_predictions, weights=is_real_example
+                    labels=tac_ids, predictions=tac_predictions
                 )
 
                 # Top 5 tactics accuracy
                 topk_preds = tf.to_float(tf.nn.in_top_k(tac_logits, tac_ids, 5))
                 tac_topk_accuracy = tf.metrics.mean(
-                    values=topk_preds, weights=is_real_example
+                    values=topk_preds
                 )
 
                 pos_logits = tf.boolean_mask(tf.squeeze(par_logits), thm_label)
                 neg_logits = tf.boolean_mask(tf.squeeze(par_logits), 1 - thm_label)
                 pos_pred = tf.sigmoid(pos_logits)
                 neg_pred = tf.sigmoid(neg_logits)
-                pos_guess = tf.to_float(tf.greater(pos_pred, 0.5))
-                neg_guess = tf.to_float(tf.less(neg_pred, 0.5))
+                pos_guess = tf.reduce_mean(tf.to_float(tf.greater(pos_pred, 0.5)))
+                neg_guess = tf.reduce_mean(tf.to_float(tf.less(neg_pred, 0.5)))
 
                 pos_acc = tf.metrics.mean(
-                    values=pos_guess, weights=is_real_example
+                    values=pos_guess
                 )
                 neg_acc = tf.metrics.mean(
-                    values=neg_guess, weights=is_real_example
+                    values=neg_guess
                 )
 
                 tot_loss = (0.5 * par_loss) + tac_loss
@@ -771,10 +770,9 @@ def model_fn_builder(
                     tac_logits,
                     par_logits,
                     tac_ids,
-                    thm_label,
-                    is_real_example,
                     tf.ones(params['batch_size']) * tac_loss,
                     tf.ones(params['batch_size']) * par_loss,
+                    thm_label,
                 ],
             )
 
