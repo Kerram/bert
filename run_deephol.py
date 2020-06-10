@@ -56,6 +56,12 @@ flags.DEFINE_integer(
     "than this will be padded.",
 )
 
+flags.DEFINE_integer(
+    "max_number_of_theorems",
+    32,
+    "The maximum number of theorems used as tactic arguments. Goals with less will be padded, with more truncated.",
+)
+
 flags.DEFINE_bool("do_train", True, "Whether to run training.")
 
 flags.DEFINE_string("train_file", None, "Path to train tf_record file.")
@@ -141,19 +147,19 @@ def get_tac_labels():
     return [str(i) for i in range(41)]
 
 
-def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remainder):
+def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remainder, max_number_of_therems):
     """Creates an `input_fn` closure to be passed to TPUEstimator."""
 
     name_to_features = {
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "thms_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thms_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thms_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
-        "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
+        "number_of_theorems": tf.FixedLenFeature([], tf.int64),
     }
 
     def _decode_record(record, name_to_features):
@@ -194,7 +200,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
     return input_fn
 
 
-def build_predict_fake_input_fn(input_file, seq_length, drop_remainder):
+def build_predict_fake_input_fn(input_file, seq_length, drop_remainder, max_number_of_therems):
     """Creates an `input_fn` closure to be passed to TPUEstimator.
     This function differs from the one used for train and valid sets, because
     we add goal and thm strings as additional features."""
@@ -203,12 +209,12 @@ def build_predict_fake_input_fn(input_file, seq_length, drop_remainder):
         "goal_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
         "goal_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_ids": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_input_mask": tf.FixedLenFeature([seq_length], tf.int64),
-        "thm_segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "thms_input_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thms_input_mask": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
+        "thms_segment_ids": tf.FixedLenFeature([seq_length * max_number_of_therems], tf.int64),
         "tac_ids": tf.FixedLenFeature([], tf.int64),
-        "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
+        "number_of_theorems": tf.FixedLenFeature([], tf.int64),
         'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
         'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
     }
@@ -507,6 +513,8 @@ def model_fn_builder(
 
         if do_export:  # HOList has different expectation towards input features.
             update_features_using_deephol(features, max_seq_length)
+        else:
+            update_features_on_TPU(features, max_seq_length)
 
         tf.logging.info("*** Features after deephol ***")
         for name in sorted(features.keys()):
@@ -845,6 +853,7 @@ def main(_):
             seq_length=FLAGS.max_seq_length,
             is_training=True,
             drop_remainder=True,
+            max_number_of_therems=FLAGS.max_number_of_theorems,
         )
         estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
 
@@ -874,6 +883,7 @@ def main(_):
             seq_length=FLAGS.max_seq_length,
             is_training=False,
             drop_remainder=eval_drop_remainder,
+            max_number_of_therems=FLAGS.max_number_of_theorems,
         )
 
         def run_eval():
@@ -904,12 +914,12 @@ def main(_):
             "goal_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
             "goal_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
             "goal_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
-            "thm_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length]),
+            "thms_input_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
+            "thms_input_mask": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
+            "thms_segment_ids": tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.max_seq_length * FLAGS.max_number_of_theorems]),
             "tac_ids": tf.placeholder(dtype=tf.int32, shape=[None]),
-            "is_negative": tf.placeholder(dtype=tf.int32, shape=[None]),
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
+            "number_of_theorems": tf.placeholder(dtype=tf.int32, shape=[None]),
             "goal_str": tf.placeholder(dtype=tf.string, shape=[None]),
             "thm_str": tf.placeholder(dtype=tf.string, shape=[None]),
         }
@@ -921,6 +931,7 @@ def main(_):
             input_file=FLAGS.test_file,
             seq_length=FLAGS.max_seq_length,
             drop_remainder=False,
+            max_number_of_therems=FLAGS.max_number_of_theorems,
         )
 
         # Export final model
