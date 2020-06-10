@@ -334,6 +334,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
 
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
 
+    tf.losses.add_loss(log_prob_tactic)
     return log_prob_tactic, tac_logits, tac_probabilities
 
 
@@ -373,6 +374,8 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
         multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
         logits=par_logits,
         reduction=tf.losses.Reduction.SUM)
+
+    tf.losses.add_loss(0.5 * ce_loss)
 
     return ce_loss, par_logits
 
@@ -563,7 +566,8 @@ def model_fn_builder(
             if use_tpu:
                 opt = tf.contrib.tpu.CrossShardOptimizer(opt)
 
-            train_op = opt.minimize(total_loss, global_step=global_step)
+            loss = tf.losses.get_total_loss()
+            train_op = opt.minimize(loss, global_step=global_step)
 
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
                 mode=mode, loss=total_loss, train_op=train_op, scaffold_fn=scaffold_fn,
@@ -579,6 +583,7 @@ def model_fn_builder(
                 is_real_example,
                 tac_loss,
                 par_loss,
+                loss,
             ):
                 tac_predictions = tf.argmax(tac_logits, axis=-1, output_type=tf.int32)
 
@@ -625,6 +630,7 @@ def model_fn_builder(
                     "total_loss": tot_loss,
                     "chosen_tactic (mean)": chosen_tac,
                     "chosen_tactic (acc)": chosen_tac_acc,
+                    "loss": tf.metrics.mean(loss),
                 }
 
                 return res
@@ -639,6 +645,7 @@ def model_fn_builder(
                     is_real_example,
                     tf.ones(params['batch_size']) * tac_loss,
                     tf.ones(params['batch_size']) * par_loss,
+                    tf.ones(params['batch_size']) * tf.losses.get_total_loss(),
                 ],
             )
 
