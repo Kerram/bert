@@ -302,8 +302,6 @@ def thm_encoding(
 
 
 def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example):
-    hidden_size = goal_net.shape[-1].value
-
     tf.add_to_collection('tactic_net', goal_net)
 
     # Adding 3 dense layers with dropout like in deephol
@@ -311,13 +309,13 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     if is_training:
         goal_net = tf.nn.dropout(goal_net, rate=(1 - 0.7))
     goal_net = tf.layers.dense(
-        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense1"
+        goal_net, 128, activation=tf.nn.relu, name="tac_dense1"
     )
 
     if is_training:
         goal_net = tf.nn.dropout(goal_net, rate=(1 - 0.7))
     goal_net = tf.layers.dense(
-        goal_net, hidden_size, activation=tf.nn.relu, name="tac_dense2"
+        goal_net, 128, activation=tf.nn.relu, name="tac_dense2"
     )
 
     if is_training:
@@ -332,37 +330,14 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     log_prob_tactic = tf.losses.sparse_softmax_cross_entropy(
         logits=tac_logits, labels=tac_ids, weights=is_real_example)
 
+    tf.losses.add_loss(log_prob_tactic)
+
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
 
     return log_prob_tactic, tac_logits, tac_probabilities
 
 
-def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_example):
-    # concat goal_net, thm_net and their dot product as in deephol
-    hidden_size = goal_net.shape[-1].value
-    # [batch_size, 3 * hidden_size]
-    net = tf.concat([goal_net, thm_net, goal_net * thm_net], -1)
-
-    # Adding 3 dense layers with dropout like in deephol
-    # with tf.variable_scope("loss"):
-    if is_training:
-        net = tf.nn.dropout(net, rate=(1 - 0.7))
-    net = tf.layers.dense(
-        net, hidden_size, activation=tf.nn.relu, name="par_dense1"
-    )
-
-    if is_training:
-        net = tf.nn.dropout(net, rate=(1 - 0.7))
-    net = tf.layers.dense(
-        net, hidden_size, activation=tf.nn.relu, name="par_dense2"
-    )
-
-    if is_training:
-        net = tf.nn.dropout(net, rate=(1 - 0.7))
-    net = tf.layers.dense(
-        net, hidden_size, activation=tf.nn.relu, name="par_dense3"
-    )
-
+def pairwise_scorer(net, is_negative_labels, is_real_example):
     # [batch_size, 1]
     par_logits = tf.layers.dense(net, 1, activation=None)
 
@@ -373,6 +348,8 @@ def pairwise_scorer(goal_net, thm_net, is_training, is_negative_labels, is_real_
         multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
         logits=par_logits,
         reduction=tf.losses.Reduction.SUM)
+
+    tf.losses.add_loss(ce_loss * 0.5)
 
     return ce_loss, par_logits
 
@@ -398,6 +375,25 @@ def create_model(
                 thm_input_ids,
             )
 
+            # Concatenate theorem encoding, goal encoding, their dot product.
+            # This attention-style concatenation performed well in language models.
+            # Output shape: [batch_size, 3 * hidden_size]
+            net = tf.concat([
+                goal_net, thm_net,
+                tf.multiply(goal_net, thm_net)
+            ], -1)
+
+            if is_training:
+                net = tf.nn.dropout(net, rate=(1 - 0.7))
+            net = tf.layers.dense(net, 128, activation=tf.nn.relu)
+            if is_training:
+                net = tf.nn.dropout(net, rate=(1 - 0.7))
+            net = tf.layers.dense(net, 128, activation=tf.nn.relu)
+            if is_training:
+                net = tf.nn.dropout(net, rate=(1 - 0.7))
+            net = tf.layers.dense(net, 128, activation=tf.nn.relu)
+            tf.add_to_collection('thm_goal_fc', net)
+
     with tf.variable_scope("classifier"):
         (
             tac_loss,
@@ -407,7 +403,7 @@ def create_model(
 
     with tf.variable_scope("pairwise_scorer"):
         (par_loss, par_logits) = pairwise_scorer(
-            goal_net, thm_net, is_training, is_negative_labels, is_real_example
+            net, is_negative_labels, is_real_example
         )
 
     total_loss = (0.5 * par_loss) + tac_loss
@@ -532,13 +528,7 @@ def model_fn_builder(
         output_spec = None
 
         if init_checkpoint:
-            if use_tpu:
-                def tpu_scaffold():
-                    return tf.train.Scaffold()
-
-                scaffold_fn = tpu_scaffold
-
-            elif do_export:
+            if do_export:
                 tf.train.warm_start(
                     init_checkpoint,
                     "encoder/*")
@@ -552,6 +542,11 @@ def model_fn_builder(
                     "pairwise_scorer/*")
 
         if mode == tf.estimator.ModeKeys.TRAIN:
+            def tpu_scaffold():
+                return tf.train.Scaffold()
+
+            scaffold_fn = tpu_scaffold
+
             global_step = tf.train.get_or_create_global_step()
             lr = tf.train.exponential_decay(
                 learning_rate=learning_rate,
@@ -563,10 +558,11 @@ def model_fn_builder(
             if use_tpu:
                 opt = tf.contrib.tpu.CrossShardOptimizer(opt)
 
-            train_op = opt.minimize(total_loss, global_step=global_step)
+            loss = tf.losses.get_total_loss()
+            train_op = opt.minimize(loss, global_step=global_step)
 
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-                mode=mode, loss=total_loss, train_op=train_op, scaffold_fn=scaffold_fn,
+                mode=mode, loss=loss, train_op=train_op, scaffold_fn=scaffold_fn,
             )
 
         elif mode == tf.estimator.ModeKeys.EVAL:
@@ -642,11 +638,11 @@ def model_fn_builder(
                 ],
             )
 
+            loss = tf.losses.get_total_loss()
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
                 mode=mode,
-                loss=total_loss,
+                loss=loss,
                 eval_metrics=eval_metrics,
-                scaffold_fn=scaffold_fn,
             )
 
         else:
@@ -656,7 +652,7 @@ def model_fn_builder(
             }
 
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-                mode=mode, predictions=preds, scaffold_fn=scaffold_fn
+                mode=mode, predictions=preds,
             )
 
         return output_spec
