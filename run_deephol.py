@@ -285,9 +285,9 @@ def thm_encoding(
     vocab_size,
     thm_ids,
 ):
-    goal_embedding = get_vocab_embedding('goal_embedding', vocab_size)
+    thm_embedding = get_vocab_embedding('thm_embedding', vocab_size)
     # output shape is [batch_size, thm length, word_embedding_size]
-    thm_net = tf.nn.embedding_lookup(goal_embedding, thm_ids)
+    thm_net = tf.nn.embedding_lookup(thm_embedding, thm_ids)
     tf.add_to_collection('thm_embedding', thm_net)
 
     with tf.variable_scope('thm', reuse=False):
