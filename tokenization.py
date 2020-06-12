@@ -75,7 +75,7 @@ class WordSplitterTokenizer(object):
     text = ' '.join(['[CLS]', text.strip()])
     # Remove parentheses.
     text = text.replace('(', ' ').replace(')', ' ')
-    words = tf.strings.split(text)
+    words = text.split()
 
     # Truncate long terms.
     words = words[:(max_seq_length - 1)]
