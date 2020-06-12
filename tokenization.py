@@ -45,7 +45,7 @@ def convert_to_unicode(text):
 
 def load_vocab(vocab_file):
   """Loads a vocabulary file into a dictionary."""
-  vocab = collections.defaultdict(lambda _: 9)  # 9 = [UNK]
+  vocab = collections.defaultdict(lambda: 9)  # 9 = [UNK]
   index = 0
 
   with tf.gfile.GFile(vocab_file, "r") as reader:
