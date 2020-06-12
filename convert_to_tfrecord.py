@@ -179,22 +179,6 @@ class DeepholProcessor(DataProcessor):
         return examples
 
 
-def convert_tokens(tokens, tokenizer, max_seq_length):
-    res = ["[CLS]"]
-
-    for token in tokens:
-        res.append(token)
-
-    res.append("[SEP]")
-
-    input_ids = tokenizer.convert_tokens_to_ids(res)
-
-    while len(input_ids) < max_seq_length:
-        input_ids.append(0)
-
-    return res, input_ids
-
-
 def convert_single_example(
     ex_index, example, tac_label_list, is_negative_label_list, max_seq_length, tokenizer
 ):
@@ -219,21 +203,8 @@ def convert_single_example(
     for (i, label) in enumerate(is_negative_label_list):
         is_negative_label_map[label] = i
 
-    g_tokens = tokenizer.tokenize(example.goal)
-    t_tokens = tokenizer.tokenize(example.thm)
-
-    if len(g_tokens) > max_seq_length - 2:
-        g_tokens = g_tokens[0 : (max_seq_length - 2)]
-
-    if len(t_tokens) > max_seq_length - 2:
-        t_tokens = t_tokens[0 : (max_seq_length - 2)]
-
-    (goal_tokens, goal_input_ids) = convert_tokens(
-        g_tokens, tokenizer, max_seq_length
-    )
-    (thm_tokens, thm_input_ids) = convert_tokens(
-        t_tokens, tokenizer, max_seq_length
-    )
+    goal_input_ids = tokenizer.tokenize(example.goal, max_seq_length)
+    thm_input_ids = tokenizer.tokenize(example.thm, max_seq_length)
 
     assert len(goal_input_ids) == max_seq_length
     assert len(thm_input_ids) == max_seq_length
@@ -244,14 +215,6 @@ def convert_single_example(
     if ex_index < 1:
         tf.logging.info("*** Example ***")
         tf.logging.info("guid: %s" % (example.guid))
-        tf.logging.info(
-            "goal_tokens: %s"
-            % " ".join([tokenization.printable_text(x) for x in goal_tokens])
-        )
-        tf.logging.info(
-            "thm_tokens: %s"
-            % " ".join([tokenization.printable_text(x) for x in thm_tokens])
-        )
         tf.logging.info(
             "goal_input_ids: %s" % " ".join([str(x) for x in goal_input_ids])
         )
@@ -354,7 +317,7 @@ def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
 
     processor = DeepholProcessor()
-    tokenizer = tokenization.LongestTokenizer(vocab=FLAGS.vocab_file)
+    tokenizer = tokenization.WordSplitterTokenizer(vocab=FLAGS.vocab_file)
 
     examples = processor.get_examples(FLAGS.data_path, FLAGS.set_type)
 

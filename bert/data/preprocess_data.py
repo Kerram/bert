@@ -1,27 +1,27 @@
 import pandas as pd
 
 
-def preprocess(df):
-    df = df.sample(frac=1).reset_index(drop=True)
-    df = df.replace(['\(', '\)'], [' ', ' '], regex=True)
-    df = df.replace(['<NULL>'], [''], regex=True)
+def preprocess(m_df):
+    m_df = m_df.sample(frac=1).reset_index(drop=True)
+    m_df = m_df.replace(['\(', '\)'], [' ', ' '], regex=True)
+    m_df = m_df.replace(['<NULL>'], [''], regex=True)
 
     print("Preprocessing done.")
 
-    return df
+    return m_df
 
 
-test_df = pd.read_csv('test.csv', sep=',').head(8)
-test_df = preprocess(test_df)
-test_df.to_csv('preprocessed_test.tsv', index=False, sep='\t')
+df = pd.read_csv('test.csv', sep=',').head(8)
+df = preprocess(df)
+df.to_csv('preprocessed_test.tsv', index=False, sep='\t')
 
-train_df = pd.read_csv('train.csv', sep=',')
-train_df = preprocess(train_df)
-train_df.to_csv('preprocessed_train.tsv', index=False, sep='\t')
+df = pd.read_csv('train.csv', sep=',')
+df = preprocess(df)
+df.to_csv('preprocessed_train.tsv', index=False, sep='\t')
 
-valid_df = pd.read_csv('valid.csv', sep=',')
-valid_df = preprocess(valid_df)
-valid_df.to_csv('preprocessed_valid.tsv', index=False, sep='\t')
+df = pd.read_csv('valid.csv', sep=',')
+df = preprocess(df)
+df.to_csv('preprocessed_valid.tsv', index=False, sep='\t')
 
-valid_df = valid_df.head(50_000)
-valid_df.to_csv('preprocessed_valid_mini.tsv', index=False, sep='\t')
+df = df.head(50_000)
+df.to_csv('preprocessed_valid_mini.tsv', index=False, sep='\t')
