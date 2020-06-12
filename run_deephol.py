@@ -730,7 +730,10 @@ def main(_):
     tf.logging.info("Preparation completed!")
 
     if FLAGS.do_train:
-        num_train_steps = 333000
+        train_examples_count = count_records(FLAGS.train_file)
+        num_train_steps = int(
+            train_examples_count / FLAGS.train_batch_size * FLAGS.num_train_epochs
+        )
 
     model_fn = model_fn_builder(
         num_tac_labels=len(tac_labels),
