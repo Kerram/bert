@@ -123,15 +123,21 @@ class TensorWorkSplitter(object):
     words = tf.strings.split(tm)
 
     # Truncate long terms.
-    tf.logging.info("  name = %s, shape = %s" % ("words before SEP", words.shape))
+    tf.logging.info("  name = %s, shape = %s" % ("words", words.shape))
     words = tf.sparse.slice(words, [0, 0],
                             [tf.shape(words)[0], max_seq_length - 1])
-    words = tf.concat(words, tf.tile(tf.constant(['[SEP]']), tf.shape(words)[0]), axis=1)
-    tf.logging.info("  name = %s, shape = %s" % ("words after SEP", words.shape))
 
     word_values = words.values
     id_values = tf.to_int32(self.vocab_table.lookup(word_values))
     tf.logging.info("  name = %s, shape = %s" % ("id_values", id_values.shape))
     ids = tf.SparseTensor(words.indices, id_values, words.dense_shape)
     ids = tf.sparse_tensor_to_dense(ids)
+
+    # 11 is an id for [SEP]
+    ids = tf.concat([
+      ids,
+      tf.expand_dims(tf.tile([tf.constant(11)], [tf.shape(words)[0]]), 1)
+    ], axis=1)
+    tf.logging.info("  name = %s, shape = %s" % ("ids", ids.shape))
+
     return ids
