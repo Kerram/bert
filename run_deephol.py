@@ -835,6 +835,7 @@ def main(_):
 
     train_examples_count = 0
     num_train_steps = None
+    num_warmup_steps = None
 
     tf.logging.info("Preparation completed!")
 
