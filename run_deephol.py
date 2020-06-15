@@ -286,9 +286,8 @@ def goal_encoding(
     input_ids,
     input_mask,
     use_one_hot_embeddings,
-    max_seq_length,
 ):
-    segment_ids = tf.tile([0], [max_seq_length])
+    segment_ids = tf.to_int32(tf.zeros(tf.shape(input_ids)))
 
     with tf.variable_scope('goal', reuse=False):
         # output shape: [batch_size, hidden_size]
@@ -305,9 +304,8 @@ def thm_encoding(
     input_ids,
     input_mask,
     use_one_hot_embeddings,
-    max_seq_length,
 ):
-    segment_ids = tf.tile([0], [max_seq_length])
+    segment_ids = tf.to_int32(tf.zeros(tf.shape(input_ids)))
 
     with tf.variable_scope('thm', reuse=False):
         # output shape: [batch_size, hidden_size]
@@ -382,7 +380,6 @@ def create_model(
     is_negative_labels,
     is_training,
     is_real_example,
-    max_seq_length,
     use_one_hot_embeddings,
 ):
     with tf.variable_scope("encoder"):
@@ -393,7 +390,6 @@ def create_model(
                 goal_input_ids,
                 goal_input_mask,
                 use_one_hot_embeddings,
-                max_seq_length,
             )
             thm_net = thm_encoding(
                 is_training,
@@ -401,7 +397,6 @@ def create_model(
                 thm_input_ids,
                 thm_input_mask,
                 use_one_hot_embeddings,
-                max_seq_length,
             )
 
             # Concatenate theorem encoding, goal encoding, their dot product.
@@ -585,7 +580,6 @@ def model_fn_builder(
             is_training=is_training,
             is_negative_labels=is_negative,
             use_one_hot_embeddings=use_one_hot_embeddings,
-            max_seq_length=max_seq_length,
         )
 
         tvars = tf.trainable_variables()
