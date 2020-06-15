@@ -324,15 +324,23 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
         goal_net, num_tac_labels, activation=None, name="tac_dense3"
     )
 
-    tf.add_to_collection('tactic_logits', tac_logits)
+    tf.logging.info(tac_logits)
 
     # Compute the log loss for the tactic logits.
     log_prob_tactic = tf.losses.sparse_softmax_cross_entropy(
         logits=tac_logits, labels=tac_ids, weights=is_real_example)
 
-    tf.losses.add_loss(log_prob_tactic)
+    #tf.losses.add_loss(log_prob_tactic)
 
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
+
+    meson_only = [0.0] * 41
+    meson_only[32] = 1.0
+
+    tac_logits = tf.tile(tf.reshape(tf.constant(meson_only, dtype=tf.float32), [1, 41]), [tf.shape(goal_net)[0], 1])
+    tf.logging.info(tac_logits)
+
+    tf.add_to_collection('tactic_logits', tac_logits)
 
     return log_prob_tactic, tac_logits, tac_probabilities
 
