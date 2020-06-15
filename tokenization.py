@@ -108,7 +108,7 @@ class TensorWorkSplitter(object):
       values = tf.range(len(keys), dtype=tf.int64)
       if not reverse:
         init = tf.contrib.lookup.KeyValueTensorInitializer(keys, values)
-        return tf.contrib.lookup.HashTable(init, 1)
+        return tf.contrib.lookup.HashTable(init, 9)  # 9 = [UNK]
       else:
         init = tf.contrib.lookup.KeyValueTensorInitializer(values, keys)
         return tf.contrib.lookup.HashTable(init, '')
