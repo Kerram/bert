@@ -147,7 +147,7 @@ class DeepholProcessor(DataProcessor):
         return [str(i) for i in range(41)]
 
     def get_is_negative_labels(self):
-        return ["True", "False"]
+        return ["False", "True"]
 
     def _create_examples(self, lines, set_type):
         examples = []
@@ -219,8 +219,10 @@ def convert_single_example(
             "goal_input_ids: %s" % " ".join([str(x) for x in goal_input_ids])
         )
         tf.logging.info("thm_input_ids: %s" % " ".join([str(x) for x in thm_input_ids]))
+        tf.logging.info("tac_id (example): %d" % (example.tac_id))
         tf.logging.info("tac_id: %d" % (tac_id))
-        tf.logging.info("is_negative: %s" % (example.is_negative))
+        tf.logging.info("is_negative: %s" % (is_negative))
+        tf.logging.info("is_negative (example): %d" % (example.is_negative))
 
     feature = InputFeatures(
         goal_input_ids=goal_input_ids,
