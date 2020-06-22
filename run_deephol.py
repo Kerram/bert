@@ -330,7 +330,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     log_prob_tactic = tf.losses.sparse_softmax_cross_entropy(
         logits=tac_logits, labels=tac_ids, weights=is_real_example)
 
-    tf.losses.add_loss(log_prob_tactic)
+    #tf.losses.add_loss(log_prob_tactic)
 
     tac_probabilities = tf.nn.softmax(tac_logits, axis=-1)
 
