@@ -219,10 +219,10 @@ def convert_single_example(
             "goal_input_ids: %s" % " ".join([str(x) for x in goal_input_ids])
         )
         tf.logging.info("thm_input_ids: %s" % " ".join([str(x) for x in thm_input_ids]))
-        tf.logging.info("tac_id (example): %d" % (example.tac_id))
+        tf.logging.info("tac_id (example): %s" % (example.tac_id))
         tf.logging.info("tac_id: %d" % (tac_id))
-        tf.logging.info("is_negative: %s" % (is_negative))
-        tf.logging.info("is_negative (example): %d" % (example.is_negative))
+        tf.logging.info("is_negative: %d" % (is_negative))
+        tf.logging.info("is_negative (example): %s" % (example.is_negative))
 
     feature = InputFeatures(
         goal_input_ids=goal_input_ids,
