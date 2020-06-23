@@ -125,7 +125,7 @@ class TensorWorkSplitter(object):
     # Truncate long terms.
     tf.logging.info("  name = %s, shape = %s" % ("words", words.shape))
     words = tf.sparse.slice(words, [0, 0],
-                            [tf.shape(words)[0], max_seq_length - 1])
+                            [tf.shape(words)[0], max_seq_length])
 
     word_values = words.values
     id_values = tf.to_int32(self.vocab_table.lookup(word_values))
@@ -134,10 +134,19 @@ class TensorWorkSplitter(object):
     ids = tf.sparse_tensor_to_dense(ids)
 
     # 11 is an id for [SEP]
-    ids = tf.concat([
-      ids,
-      tf.expand_dims(tf.tile([tf.constant(11)], [tf.shape(words)[0]]), 1)
-    ], axis=1)
+    def add_sep(tensor):
+      original_shape = tf.shape(tensor)
+
+      tensor = tf.slice(tensor, [0], [original_shape[0] - 1])
+      mask = tf.not_equal(tensor, tf.zeros(tf.shape(tensor), dtype=tf.int32))
+      tensor = tf.boolean_mask(tensor, mask)
+
+      tensor = tf.concat([tensor, [11]], axis=0)
+      tensor = tf.pad(tensor, [[0, original_shape[0] - tf.shape(tensor)[0]]])
+
+      return tensor
+
+    ids = tf.map_fn(add_sep, ids, dtype=tf.int32)
     tf.logging.info("  name = %s, shape = %s" % ("ids", ids.shape))
 
     return ids
