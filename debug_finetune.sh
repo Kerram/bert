@@ -1,5 +1,5 @@
 sudo python3 run_deephol.py --data_dir=bert/data \
---vocab_file=bert/model/vocab.txt --output_dir=gs://zpp-bucket-1920/tpu-fine-tune/models/beta_bert \
+--vocab_file=bert/model/vocab.txt --output_dir=gs://zpp-bucket-1920/tpu-fine-tune/models/params_cond_on_tac_bert \
 --num_train_epochs=100.0 --init_checkpoint=gs://zpp-bucket-1920/bert-bucket-golkarolka/bert_model11/model.ckpt-500000 \
 --bert_config_file=bert/model/bert_config.json \
 --max_seq_length=512 --do_train=False --do_eval=True --do_export=False --use_tpu=True --tpu_name=bert4 \
