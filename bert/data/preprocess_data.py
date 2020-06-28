@@ -48,17 +48,17 @@ def preprocess(m_df):
 df = pd.read_csv('test.csv', sep=',').head(8)
 df = enhance(df)
 df = preprocess(df)
-df.to_csv('preprocessed_test.tsv', index=False, sep='\t')
+df.to_csv('weighted_preprocessed_test.tsv', index=False, sep='\t')
 
 df = pd.read_csv('train.csv', sep=',')
 df = enhance(df)
 df = preprocess(df)
-df.to_csv('preprocessed_train.tsv', index=False, sep='\t')
+df.to_csv('weighted_preprocessed_train.tsv', index=False, sep='\t')
 
 df = pd.read_csv('valid.csv', sep=',')
 df = enhance(df)
 df = preprocess(df)
-df.to_csv('preprocessed_valid.tsv', index=False, sep='\t')
+df.to_csv('weighted_preprocessed_valid.tsv', index=False, sep='\t')
 
 df = df.head(50_000)
-df.to_csv('preprocessed_valid_mini.tsv', index=False, sep='\t')
+df.to_csv('weighted_preprocessed_valid_mini.tsv', index=False, sep='\t')
