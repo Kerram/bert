@@ -134,6 +134,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training, drop_remain
         "tac_ids": tf.FixedLenFeature([], tf.int64),
         "is_negative": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
+        "weight": tf.FixedLenFeature([], tf.float32),
     }
 
     def _decode_record(record, name_to_features):
@@ -187,6 +188,7 @@ def build_predict_fake_input_fn(input_file, seq_length, drop_remainder):
         "is_real_example": tf.FixedLenFeature([], tf.int64),
         'goal_str': tf.FixedLenFeature((), tf.string, default_value=''),
         'thm_str': tf.FixedLenFeature((), tf.string, default_value=''),
+        "weight": tf.FixedLenFeature([], tf.float32),
     }
 
     def _decode_record(record, name_to_features):
@@ -301,7 +303,7 @@ def thm_encoding(
     return thm_net
 
 
-def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example):
+def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example, weight):
     tf.add_to_collection('tactic_net', goal_net)
 
     # Adding 3 dense layers with dropout like in deephol
@@ -328,7 +330,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
 
     # Compute the log loss for the tactic logits.
     log_prob_tactic = tf.losses.sparse_softmax_cross_entropy(
-        logits=tac_logits, labels=tac_ids, weights=is_real_example)
+        logits=tac_logits, labels=tac_ids, weights=is_real_example * weight)
 
     tf.losses.add_loss(log_prob_tactic)
 
@@ -337,7 +339,7 @@ def tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_ex
     return log_prob_tactic, tac_logits, tac_probabilities
 
 
-def pairwise_scorer(net, is_negative_labels, is_real_example):
+def pairwise_scorer(net, is_negative_labels, is_real_example, weight):
     # [batch_size, 1]
     par_logits = tf.layers.dense(net, 1, activation=None)
 
@@ -347,7 +349,8 @@ def pairwise_scorer(net, is_negative_labels, is_real_example):
     ce_loss = tf.losses.sigmoid_cross_entropy(
         multi_class_labels=tf.expand_dims((1 - tf.to_float(is_negative_labels)) * is_real_example, 1),
         logits=par_logits,
-        reduction=tf.losses.Reduction.SUM)
+        reduction=tf.losses.Reduction.SUM,
+        weights=tf.expand_dims(weight, 1))
 
     tf.losses.add_loss(ce_loss * 0.5)
 
@@ -363,6 +366,7 @@ def create_model(
     is_training,
     is_real_example,
     vocab_size,
+    weight,
 ):
     with tf.variable_scope("encoder", reuse=tf.AUTO_REUSE):
         with tf.variable_scope("dilated_cnn_pairwise_encoder"):
@@ -399,11 +403,11 @@ def create_model(
             tac_loss,
             tac_logits,
             tac_probabilities,
-        ) = tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example)
+        ) = tactic_classifier(goal_net, is_training, tac_ids, num_tac_labels, is_real_example, weight)
 
     with tf.variable_scope("pairwise_scorer"):
         (par_loss, par_logits) = pairwise_scorer(
-            net, is_negative_labels, is_real_example
+            net, is_negative_labels, is_real_example, weight
         )
 
     total_loss = (0.5 * par_loss) + tac_loss
@@ -498,6 +502,7 @@ def model_fn_builder(
         thm_input_ids = features["thm_input_ids"]
         tac_ids = features["tac_ids"]
         is_negative = features["is_negative"]
+        weight = features["weight"]
 
         if "is_real_example" in features:
             is_real_example = tf.cast(features["is_real_example"], dtype=tf.float32)
@@ -522,6 +527,7 @@ def model_fn_builder(
             is_training,
             is_real_example,
             vocab_size,
+            weight,
         )
 
         scaffold_fn = None

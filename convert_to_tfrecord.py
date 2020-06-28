@@ -54,7 +54,7 @@ flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval."
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, goal, thm, tac_id=None, is_negative=None):
+    def __init__(self, guid, goal, thm, weight, tac_id=None, is_negative=None):
         """Constructs an InputExample.
 
     Args:
@@ -69,6 +69,7 @@ class InputExample(object):
         self.thm = thm
         self.tac_id = tac_id
         self.is_negative = is_negative
+        self.weight = weight
 
 
 class PaddingInputExample(object):
@@ -88,6 +89,7 @@ class InputFeatures(object):
         is_negative,
         goal_str,
         thm_str,
+        weight,
         is_real_example=True,
     ):
 
@@ -98,6 +100,7 @@ class InputFeatures(object):
         self.is_real_example = is_real_example
         self.goal_str = goal_str
         self.thm_str = thm_str
+        self.weight = weight
 
 
 class DataProcessor(object):
@@ -160,6 +163,7 @@ class DeepholProcessor(DataProcessor):
                 #  The values really don't matter, because we are using test set only as a hack to export a model.
                 goal = tokenization.convert_to_unicode(line[0])
                 thm = tokenization.convert_to_unicode(line[1])
+                weight = "1.0"
                 is_negative = "True"
                 tac_id = "0"
             else:
@@ -167,11 +171,13 @@ class DeepholProcessor(DataProcessor):
                 thm = tokenization.convert_to_unicode(line[1])
                 is_negative = tokenization.convert_to_unicode(line[2])
                 tac_id = tokenization.convert_to_unicode(line[3])
+                weight = tokenization.convert_to_unicode(line[4])
             examples.append(
                 InputExample(
                     guid=guid,
                     goal=goal,
                     thm=thm,
+                    weight=weight,
                     tac_id=tac_id,
                     is_negative=is_negative,
                 )
@@ -193,6 +199,7 @@ def convert_single_example(
             is_real_example=False,
             goal_str="",
             thm_str="",
+            weight=0.0,
         )
 
     tac_label_map = {}
@@ -232,6 +239,7 @@ def convert_single_example(
         is_real_example=True,
         goal_str=example.goal,
         thm_str=example.thm,
+        weight=example.weight,
     )
 
     return feature
@@ -261,12 +269,17 @@ def file_based_convert_examples_to_features(
             f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
             return f
 
+        def create_float_feature(values):
+            f = tf.train.Feature(float_list=tf.train.FloatList(value=list(values)))
+            return f
+
         features = collections.OrderedDict()
         features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
         features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
+        features["weight"] = create_float_feature([float(feature.weight)])
 
         tf_example = tf.train.Example(features=tf.train.Features(feature=features))
         writer.write(tf_example.SerializeToString())
@@ -298,12 +311,17 @@ def test_set_convert_examples_to_features(
             f = tf.train.Feature(int64_list=tf.train.Int64List(value=list(values)))
             return f
 
+        def create_float_feature(values):
+            f = tf.train.Feature(float_list=tf.train.FloatList(value=list(values)))
+            return f
+
         features = collections.OrderedDict()
         features["goal_input_ids"] = create_int_feature(feature.goal_input_ids)
         features["thm_input_ids"] = create_int_feature(feature.thm_input_ids)
         features["tac_ids"] = create_int_feature([feature.tac_id])
         features["is_negative"] = create_int_feature([feature.is_negative])
         features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
+        features["weight"] = create_float_feature([float(feature.weight)])
         features["goal_str"] = tf.train.Feature(bytes_list=tf.train.BytesList(
             value=[bytes(feature.goal_str, encoding="utf-8")]))
         features['thm_str'] = tf.train.Feature(bytes_list=tf.train.BytesList(
