@@ -833,6 +833,7 @@ def main(_):
             "is_real_example": tf.placeholder(dtype=tf.int32, shape=[None]),
             "goal_str": tf.placeholder(dtype=tf.string, shape=[None]),
             "thm_str": tf.placeholder(dtype=tf.string, shape=[None]),
+            "weight": tf.placeholder(dtype=tf.float32, shape=[None]),
         }
         label_spec = {}
         build_input = tf.contrib.estimator.build_raw_supervised_input_receiver_fn
