@@ -511,7 +511,7 @@ def update_features_using_deephol(features, max_seq_length):
 
         thm = tensor_tokenizer.tokenize(features['thm_str'], max_seq_length)
 
-        thm_input_mask = tf.ones(tf.shape(goal))
+        thm_input_mask = tf.ones(tf.shape(thm))
         thm = _pad_up_to(thm, max_seq_length, 1)
         thm_input_mask = _pad_up_to(thm_input_mask, max_seq_length, 1)
 
